@@ -4,7 +4,8 @@
 ## an ArrayMesh at runtime from the OpenStreetMap-derived road graph.
 ## Reads res://data/southcoast-roads.json (origin-relative meters, x=east /
 ## z=north / y=up) and extrudes each road centerline into a flat ribbon whose
-## width comes from its OSM highway class.
+## width is the full width stored on the feature (not re-derived).
+## Highway class only picks the neon color.
 ## Map data © OpenStreetMap contributors, ODbL.
 ## Project QUAHOG / Godot 4
 
@@ -30,11 +31,19 @@ extends Node3D
 		if value:
 			bake()
 
+## Parsed road-graph or slice document. When set, bake() does not read the file.
+var graph_override: Dictionary = {}
+
+const Contract := preload("res://scripts/world/OsmMapContract.gd")
+const Neon := preload("res://scripts/world/HighwayNeon.gd")
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
 
 var _mesh_instance: MeshInstance3D
+var _baked_material: StandardMaterial3D
+var _logged_bridge := false
 
 func _ready() -> void:
 	if bake_on_ready:
@@ -42,8 +51,13 @@ func _ready() -> void:
 
 ## Loads the road graph and (re)builds the road ribbon mesh.
 func bake() -> void:
-	var data := _load_graph()
+	var data := graph_override if not graph_override.is_empty() else _load_graph()
 	if data.is_empty():
+		return
+	Contract.warn_loaded(data)
+	var frame := Contract.classify(data)
+	if frame == "unknown":
+		push_error("[MapMeshBaker] unrecognized map document at %s" % road_graph_path)
 		return
 
 	var st := SurfaceTool.new()
@@ -51,7 +65,8 @@ func bake() -> void:
 
 	var roads: Array = data.get("roads", [])
 	for road in roads:
-		_add_ribbon(st, road)
+		if typeof(road) == TYPE_DICTIONARY:
+			_add_ribbon(st, road, frame)
 
 	st.generate_normals()
 	var mesh := st.commit()
@@ -63,9 +78,28 @@ func bake() -> void:
 		if Engine.is_editor_hint() and get_tree() != null:
 			_mesh_instance.owner = get_tree().edited_scene_root
 	_mesh_instance.mesh = mesh
-	_mesh_instance.material_override = road_material if road_material else _default_material()
+	if road_material != null:
+		_mesh_instance.material_override = road_material
+		_baked_material = road_material as StandardMaterial3D
+	else:
+		_baked_material = _default_material()
+		_mesh_instance.material_override = _baked_material
 
-	print("[MapMeshBaker] baked %d roads (%d vertices)" % [roads.size(), mesh.surface_get_array_len(0)])
+	var verts := 0
+	if mesh.get_surface_count() > 0:
+		verts = mesh.surface_get_array_len(0)
+	print("[MapMeshBaker] baked %d roads (%d vertices) frame=%s" % [roads.size(), verts, frame])
+
+## Highway neon strength. Weather and time of day drive this from StreetLoop.
+func set_neon_energy(energy: float) -> void:
+	if _baked_material != null:
+		_baked_material.emission_enabled = true
+		_baked_material.emission_energy_multiplier = energy
+
+## Wet asphalt read for rain and nor'easter. Not a physical water layer.
+func set_road_wet(wet: bool) -> void:
+	if _baked_material != null:
+		_baked_material.roughness = 0.28 if wet else 0.72
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,40 +117,58 @@ func _load_graph() -> Dictionary:
 	return parsed
 
 ## Extrudes one road's centerline into per-segment quads (two triangles each).
-func _add_ribbon(st: SurfaceTool, road: Dictionary) -> void:
+## Width is the stored full width. Points follow the document frame:
+## road graph z = north, slice z = -north. Bridge deck height is not in
+## either contract, so bridge roads stay on y = 0.
+func _add_ribbon(st: SurfaceTool, road: Dictionary, frame: String) -> void:
 	var pts: Array = road.get("points", [])
 	if pts.size() < 2:
 		return
-	var half: float = float(road.get("width", 6.0)) * 0.5
+	if frame == "slice" and bool(road.get("bridge", false)) and not _logged_bridge:
+		_logged_bridge = true
+		push_warning("[MapMeshBaker] slice bridge/layer has no deck height in the shared contract; ribbons stay at y=0.")
+	var half: float = Contract.full_width(road) * 0.5
+	var color := Neon.highway_color(Contract.osm_text(road.get("highway")))
 
 	for i in range(pts.size() - 1):
-		var a := Vector3(pts[i][0], 0.0, pts[i][1])
-		var b := Vector3(pts[i + 1][0], 0.0, pts[i + 1][1])
+		if typeof(pts[i]) != TYPE_ARRAY or typeof(pts[i + 1]) != TYPE_ARRAY:
+			continue
+		if pts[i].size() < 2 or pts[i + 1].size() < 2:
+			continue
+		var a := _frame_point(pts[i], frame)
+		var b := _frame_point(pts[i + 1], frame)
 		var dir := b - a
 		var length := dir.length()
 		if length < 0.001:
 			continue
 		dir /= length
-		# perpendicular in the ground plane
 		var n := Vector3(-dir.z, 0.0, dir.x) * half
 		var p1 := a + n
 		var p2 := b + n
 		var p3 := b - n
 		var p4 := a - n
-		# two triangles, wound for an upward-facing normal
-		_tri(st, p1, p2, p3)
-		_tri(st, p1, p3, p4)
+		_tri(st, p1, p2, p3, color)
+		_tri(st, p1, p3, p4, color)
 
-func _tri(st: SurfaceTool, x: Vector3, y: Vector3, z: Vector3) -> void:
+func _frame_point(point: Array, frame: String) -> Vector3:
+	if frame == "slice":
+		return Contract.slice_point_to_godot(float(point[0]), float(point[1]), 0.0)
+	return Contract.road_graph_point_to_godot(float(point[0]), float(point[1]), 0.0)
+
+func _tri(st: SurfaceTool, x: Vector3, y: Vector3, z: Vector3, color: Color) -> void:
+	st.set_color(color)
 	st.add_vertex(x)
+	st.set_color(color)
 	st.add_vertex(y)
+	st.set_color(color)
 	st.add_vertex(z)
 
 func _default_material() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.06, 0.06, 0.10)
+	m.albedo_color = Color(1, 1, 1)
+	m.vertex_color_use_as_albedo = true
 	m.emission_enabled = true
-	m.emission = Color(1.0, 0.24, 0.66)   # Vice City neon pink
-	m.emission_energy_multiplier = 0.15
-	m.roughness = 0.7
+	m.emission = Color(0.85, 0.88, 0.95)
+	m.emission_energy_multiplier = 0.35
+	m.roughness = 0.72
 	return m

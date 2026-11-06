@@ -6,6 +6,8 @@
 
 extends Node
 
+const HighwayNeonScript := preload("res://scripts/world/HighwayNeon.gd")
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -49,6 +51,10 @@ enum District {
 ## Seconds for the ambient color to blend from one district to the next.
 @export var blend_duration: float = 1.5
 
+## When false, _ready does not snap the parody district grade. The street
+## loop drives CLEAR-weather tint from the OSM highway tag instead.
+@export var apply_initial_grade: bool = true
+
 # ---------------------------------------------------------------------------
 # Signals
 # ---------------------------------------------------------------------------
@@ -67,8 +73,8 @@ func _ready() -> void:
 	if environment == null:
 		push_warning("CoastalNeonPostProcess: No Environment resource assigned.")
 		return
-	# Snap to the initial district without animation.
-	environment.ambient_light_color = _color_for_grade(current_grade)
+	if apply_initial_grade:
+		environment.ambient_light_color = _color_for_grade(current_grade)
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -100,6 +106,28 @@ func set_district_grade(grade: int) -> void:
 	)
 
 	district_grade_changed.emit(grade)
+
+var _tint_tween: Tween = null
+
+## While the weather ambient is CLEAR, blend a little highway neon into it.
+## Rain, fog, and nor'easter keep the WeatherController ambient. This does
+## not switch the parody district enum (New Sefton / Dighton / …).
+func apply_clear_highway_ambient(highway: String) -> void:
+	if environment == null:
+		return
+	var target: Color = HighwayNeonScript.clear_ambient(highway)
+	if _tint_tween != null and _tint_tween.is_valid():
+		_tint_tween.kill()
+	_tint_tween = create_tween()
+	_tint_tween.set_ease(Tween.EASE_IN_OUT)
+	_tint_tween.set_trans(Tween.TRANS_SINE)
+	_tint_tween.tween_property(environment, "ambient_light_color", target, blend_duration)
+
+## Stop a highway tint tween so a weather snap can own ambient_light_color.
+func cancel_tint() -> void:
+	if _tint_tween != null and _tint_tween.is_valid():
+		_tint_tween.kill()
+	_tint_tween = null
 
 ## Returns the name string for a given District enum value.
 func get_district_name(grade: int) -> String:

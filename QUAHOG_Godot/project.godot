@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Project QUAHOG - South Coast"
-config/description="GTA-style open world game set on the Massachusetts South Coast, 1986."
-config/version="0.1.0"
+config/description="The Narrows — South Coast open-world crime slice. Godot track in active development, not a production build."
+config/version="0.2.0"
 run/main_scene="res://scenes/world/Game.tscn"
 config/features=PackedStringArray("4.2", "Forward Plus")
 config/icon="res://icon.svg"

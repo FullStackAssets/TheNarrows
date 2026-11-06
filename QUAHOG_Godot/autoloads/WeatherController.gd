@@ -93,6 +93,16 @@ func _on_state_timer_timeout() -> void:
 # Public API
 # ---------------------------------------------------------------------------
 
+## Bind the world Environment and apply the current state immediately.
+## Use this when the scene creates the Environment after the autoload _ready.
+func bind_environment(env: Environment) -> void:
+	environment = env
+	_apply_weather_visuals(current_state)
+
+## Name of the current state. Matches weather_changed and HighwayNeon keys.
+func get_state_name() -> String:
+	return _state_name(current_state)
+
 ## Force the controller into a specific state immediately (or start transition).
 func force_state(state: WeatherState) -> void:
 	if _is_transitioning:

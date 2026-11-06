@@ -79,6 +79,14 @@ func set_target_density(target: float, duration: float) -> void:
 			environment.fog_enabled = false
 		)
 
+## Tween (or snap) to a WeatherController state name.
+## Densities are this node's exported presets, which match WeatherController.
+func apply_named_state(state_name: String, duration: float = 1.5) -> void:
+	if duration <= 0.0:
+		snap_to_preset(state_name)
+		return
+	set_target_density(_density_for_preset(state_name), duration)
+
 ## Convenience: snap to a named preset density without animation.
 func snap_to_preset(preset_name: String) -> void:
 	var density: float = _density_for_preset(preset_name)
