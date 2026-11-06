@@ -71,8 +71,8 @@ or read by anything) into real gameplay loops, and replaced the two-mission
 placeholder campaign with the canonical Acts I–III + Gloria finale storyline
 sourced from `QUAHOG_GODOT1/scripts/systems/story_mission.gd` (the most
 complete story-mission implementation across the Godot/Web tracks — see
-`ENGINES.md`/`QUAHOG_Unreal/LEGACY.md` for track history). `QUAHOG_Unreal/`
-(the legacy UE bootstrap) was checked for anything not already merged forward;
+`ENGINES.md` and `QUAHOG_Unreal/TRACK.md` for track history). `QUAHOG_Unreal/`
+(the earlier UE bootstrap, still its own parallel track) was checked for anything not already present here;
 its data files are byte-identical to `MountHope_Unreal/`'s and its C++ is a
 strict subset (no damage model, no `IMHInteractable`, weaker character), so
 nothing further was ported from it.
@@ -437,6 +437,40 @@ properties and call `UGameplayStatics::PlaySound2D` — safe to leave unset
 (null-safe), ready for `USoundWave`/`SoundCue` assets to be assigned in the
 editor.
 
+### Ninth pass — talk / pay / collect, choices, catalog, OSM contract
+
+Expanded the four content systems with logic that stays data-driven and
+unit-testable, and prepared the OSM import without touching the shared map
+pipeline.
+
+- **Missions** gained stable `id`s and three objective types: `Talk` (a named
+  conversation), `Pay` (buy a catalog offer), and `Collect` (a set count or one
+  item). `CanAcceptCompletion` / `CanAcceptCollection` decide which caller may
+  finish the step. World triggers still complete `Reach`/`Timed` only.
+  `Data/Missions/vertical_slice.json` keeps the 11-mission South Coast arc and
+  adds a Bethel scrimshaw pickup to "Off the Boat" and a $200 dock bribe to
+  "Auction Rules".
+- **Dialogue** lines can name a speaker, offer choices (`nextLine` / `end`), and
+  mark a branch ending with `endsConversation` so the other branch is not played
+  next. `1` and `2` select the first two choices. Deacon Mealy's opener and the
+  Republic runner both branch. The HUD appends the choices under the line.
+- **Economy** loads an `offers` catalog from `Data/Economy/businesses.json`
+  (bribe, medkit, vest, patch job). Quotes clamp discounts to 0–75%. A general
+  store pays the active Pay step through `TryPayCurrentObjective`, or sells
+  `LinkedOfferId` when no pay step is active. Successful cash changes append a
+  short ledger.
+- **Collectibles** gained sets. `narrows_scrimshaw` pays $400 and
+  `south_coast_scrimshaw` pays $800, each once. The pickup actor grants the
+  bonus and notifies the collect objective.
+- **OSM** — `Scripts/prepare_osm_import.py` writes `Data/OSM/import_manifest.json`
+  from the committed slice and southcoast roads (counts, class histogram,
+  400 m playable roads, nearby/hero landmarks, both coordinate contracts).
+  `editor_import_osm.py` uses the manifest radius for debug splines. The OBJ
+  import and the shared map pipeline are unchanged.
+- **Tests** — automation coverage for objective channels, dialogue choices,
+  offer quotes, and set bonuses. They need Unreal Editor; they were not executed
+  here. `validate_scaffold.py` cross-checks the JSON references and the manifest.
+
 ## Next phases (editor workstation required)
 
 ### Phase 1 — First playable in editor
@@ -478,10 +512,13 @@ Run `Scripts/editor_create_enhanced_input.py` in the editor to create
   `voFolder`/`jingleFolder` paths and wire a Blueprint radio player to
   `UMHRadioSubsystem::OnStationChanged` / `OnSongChanged`
 
-### Phase 5 — Repo consolidation
+### Phase 5 — Parallel Unreal tracks
 
-`QUAHOG_Unreal/` is marked **legacy** (`QUAHOG_Unreal/LEGACY.md`). Its framework
-patterns live in `MountHope_Unreal/`; do not add new features to the old tree.
+`QUAHOG_Unreal/` is an active parallel UE track. Its earlier bootstrap is where
+the JSON mission/economy/world-slice patterns were first written; those patterns
+also live in `MountHope_Unreal/`. Status and history: `QUAHOG_Unreal/TRACK.md`
+(the old `LEGACY.md` path only redirects). Mount Hope work stays in this tree.
+Neither tree has been compiled by Unreal in this sandbox.
 
 ## Local compile & package
 

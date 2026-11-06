@@ -1,6 +1,7 @@
 #include "MHGameModeBase.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "MHEconomySubsystem.h"
 #include "MHGameStateSubsystem.h"
 #include "MHMinimapCaptureActor.h"
 #include "MHMissionSubsystem.h"
@@ -148,7 +149,11 @@ void AMHGameModeBase::TickStepTimer(float DeltaSeconds)
     {
         // Survived the countdown: auto-complete the step (bypasses the vehicle/heat
         // gates, which don't apply to a hold-out objective).
-        ApplyObjectiveCompletion();
+        UMHMissionSubsystem* MissionSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMHMissionSubsystem>() : nullptr;
+        if (MissionSubsystem && MissionSubsystem->CanAcceptCompletion(EMHObjectiveCompletionChannel::Timer, NAME_None))
+        {
+            ApplyObjectiveCompletion();
+        }
     }
     else
     {
@@ -266,6 +271,11 @@ void AMHGameModeBase::RespawnAtSafehouseIfAvailable()
 
 bool AMHGameModeBase::CompleteCurrentObjective(bool bPlayerInVehicle)
 {
+    return CompleteCurrentObjectiveFrom(EMHObjectiveCompletionChannel::World, NAME_None, bPlayerInVehicle);
+}
+
+bool AMHGameModeBase::CompleteCurrentObjectiveFrom(EMHObjectiveCompletionChannel Channel, FName ContextId, bool bPlayerInVehicle)
+{
     if (!GetGameInstance())
     {
         return false;
@@ -279,6 +289,11 @@ bool AMHGameModeBase::CompleteCurrentObjective(bool bPlayerInVehicle)
 
     FMHMissionStep Step;
     if (!MissionSubsystem->GetCurrentStep(Step))
+    {
+        return false;
+    }
+
+    if (!MissionSubsystem->CanAcceptCompletion(Channel, ContextId))
     {
         return false;
     }
@@ -305,6 +320,76 @@ bool AMHGameModeBase::CompleteCurrentObjective(bool bPlayerInVehicle)
     }
 
     return ApplyObjectiveCompletion();
+}
+
+bool AMHGameModeBase::TryPayCurrentObjective(int32 DiscountPercent, bool bPlayerInVehicle)
+{
+    if (!GetGameInstance())
+    {
+        return false;
+    }
+
+    UMHMissionSubsystem* MissionSubsystem = GetGameInstance()->GetSubsystem<UMHMissionSubsystem>();
+    UMHEconomySubsystem* EconomySubsystem = GetGameInstance()->GetSubsystem<UMHEconomySubsystem>();
+    if (!MissionSubsystem || !EconomySubsystem)
+    {
+        return false;
+    }
+
+    FMHMissionStep Step;
+    if (!MissionSubsystem->GetCurrentStep(Step))
+    {
+        return false;
+    }
+
+    if (!MissionSubsystem->CanAcceptCompletion(EMHObjectiveCompletionChannel::Payment, Step.PayOfferId))
+    {
+        return false;
+    }
+
+    if (Step.bNeedVehicle && !bPlayerInVehicle)
+    {
+        return false;
+    }
+
+    if (Step.bRequireNoHeat)
+    {
+        if (UWorld* World = GetWorld())
+        {
+            if (UMHWantedSubsystem* WantedSubsystem = World->GetSubsystem<UMHWantedSubsystem>())
+            {
+                if (WantedSubsystem->GetWantedLevel() > 0)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
+    if (!EconomySubsystem->TryPurchaseOffer(Step.PayOfferId, DiscountPercent))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MountHope: cannot pay offer '%s' for the current objective."), *Step.PayOfferId.ToString());
+        return false;
+    }
+
+    return CompleteCurrentObjectiveFrom(EMHObjectiveCompletionChannel::Payment, Step.PayOfferId, bPlayerInVehicle);
+}
+
+bool AMHGameModeBase::NotifyCollectibleProgress(FName ItemId, FName SetId, int32 FoundInSet)
+{
+    if (!GetGameInstance())
+    {
+        return false;
+    }
+
+    UMHMissionSubsystem* MissionSubsystem = GetGameInstance()->GetSubsystem<UMHMissionSubsystem>();
+    if (!MissionSubsystem || !MissionSubsystem->CanAcceptCollection(ItemId, SetId, FoundInSet))
+    {
+        return false;
+    }
+
+    const FName ContextId = !SetId.IsNone() ? SetId : ItemId;
+    return CompleteCurrentObjectiveFrom(EMHObjectiveCompletionChannel::Collection, ContextId, false);
 }
 
 bool AMHGameModeBase::ApplyObjectiveCompletion()

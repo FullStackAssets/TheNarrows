@@ -1,8 +1,6 @@
-# ⚠️ Legacy / reference — not actively developed
+# Track status moved
 
-The canonical engine is **`QUAHOG_Web/`** (Three.js / React Three Fiber).
-See [`../ENGINES.md`](../ENGINES.md).
+The status note that used to live in this file is now [TRACK.md](TRACK.md).
 
-This Godot (GDScript) port predates the web-engine decision and is kept for
-reference only. Some of its design (district constants, weather/neon flavor) is
-still useful as a source of ideas, but new gameplay is built in `QUAHOG_Web/`.
+This path remains so older links keep resolving. The filename is historical.
+It is not the track's status. See [../ENGINES.md](../ENGINES.md).

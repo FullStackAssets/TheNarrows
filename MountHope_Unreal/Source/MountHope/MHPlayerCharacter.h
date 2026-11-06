@@ -26,6 +26,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Mount Hope|Interaction")
     void TryInteract();
 
+    UFUNCTION(BlueprintCallable, Category = "Mount Hope|Dialogue")
+    void RequestDialogueChoice(int32 ChoiceIndex);
+
     UFUNCTION(BlueprintCallable, Category = "Mount Hope|Vehicle")
     void RequestEnterExitVehicle();
 
@@ -113,6 +116,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Input")
     TObjectPtr<UInputAction> IA_Fire = nullptr;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Input")
+    TObjectPtr<UInputAction> IA_DialogueChoice1 = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Input")
+    TObjectPtr<UInputAction> IA_DialogueChoice2 = nullptr;
+
     UPROPERTY(BlueprintReadOnly, Category = "Mount Hope|Combat")
     bool bHasPistol = false;
 
@@ -153,6 +162,10 @@ private:
     void LegacySprintStop();
     void SetSprintRequested(bool bRequested);
     void InputInteract(const FInputActionValue& Value);
+    void InputDialogueChoice1();
+    void InputDialogueChoice2();
+    void InputDialogueChoice1Action(const FInputActionValue& Value);
+    void InputDialogueChoice2Action(const FInputActionValue& Value);
     void InputEnterExitVehicle(const FInputActionValue& Value);
     void InputRadioNextStation(const FInputActionValue& Value);
     void InputFire(const FInputActionValue& Value);

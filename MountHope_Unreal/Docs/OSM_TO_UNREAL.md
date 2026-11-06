@@ -13,6 +13,34 @@ adding a new city.
 | `../QUAHOG_Web/public/slice-newbedford.json` | Current web vertical-slice blockout with roads, building footprints, landmarks, and local metric coordinates. |
 | `../quahog-project-files/mapdata/*.geojson` | Source GIS layers for re-baking custom Unreal meshes or adding metadata. |
 
+## Prepared import contract
+
+`Scripts/prepare_osm_import.py` reads the committed slice and
+`southcoast-roads.json` and writes `Data/OSM/import_manifest.json`. It does
+not modify the shared map pipeline and it does not change either importer's
+coordinate math. `Scripts/validate_scaffold.py` runs the script with `--check`
+so the manifest cannot drift from those inputs.
+
+The manifest records two conversions that already exist in the editor scripts.
+They do not share a ground plane:
+
+| Contract | Unreal centimeters | Used by |
+| --- | --- | --- |
+| Slice importer | `X = east * 100`, `Y = -north * 100`, `Z = up * 100` | `Scripts/editor_import_osm.py` |
+| Mission plane | `X = east * 100`, `Y = up * 100`, `Z = north * 100` | `Scripts/editor_import_southcoast_roads.py` and mission `target` arrays |
+
+`editor_import_osm.py` reads `playableDistrict.radiusMeters` from the manifest
+(400 m from the slice origin) when deciding which debug road splines to spawn.
+The OBJ blockout import is unchanged. If the manifest is missing, the script
+falls back to its own radius constant.
+
+Regenerate the manifest after a slice or southcoast-roads refresh:
+
+```bash
+python3 MountHope_Unreal/Scripts/prepare_osm_import.py
+python3 MountHope_Unreal/Scripts/prepare_osm_import.py --check
+```
+
 ## Coordinate conversion
 
 The baked map data is already in local meters:

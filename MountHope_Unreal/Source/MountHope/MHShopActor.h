@@ -42,6 +42,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Shop")
     FString LinkedBusinessId;
 
+    // Catalog offer sold when no Pay objective is active. Empty keeps the business-purchase path.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Shop")
+    FName LinkedOfferId = NAME_None;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Shop")
     int32 BaseRepairCost = 150;
 
@@ -70,5 +74,6 @@ private:
     void HandleGarageInteraction(APawn* InstigatorPawn);
     void HandleGeneralStoreInteraction(APawn* InstigatorPawn);
     int32 GetEffectiveRepairCost() const;
+    int32 GetReputationDiscountPercent() const;
     class AMHVehiclePawn* FindNearestDamagedVehicle(const APawn* InstigatorPawn) const;
 };

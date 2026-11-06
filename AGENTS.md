@@ -5,20 +5,23 @@ See `README.md` and `plans/the-narrows.md`. Shippable product: `QUAHOG_GODOT1/`.
 
 ## Cursor Cloud specific instructions
 
-### What is canonical vs. legacy
+### Engine tracks
 
-- **`QUAHOG_Web/` is the only canonical, runnable product** (Three.js / React
-  Three Fiber + Rapier, Vite + TypeScript). This is what to run/test for an
-  end-to-end check.
-- **`MountHope_Unreal/` is a separate UE5 PC/console scaffold**, not runnable in
- this sandbox without a local Unreal editor install. Keep it aligned with the
- existing OSM/map concept, but validate it here with repo-local scripts unless
- an Unreal workstation is available.
-- `QUAHOG_Unity/` (Unity 6 C#) and `QUAHOG_Godot/` (Godot GDScript) are
-  **legacy/reference only**. They require the Unity/Godot editors and **cannot
-  be built or run in this sandbox**. The Unity WebGL CI workflow
-  (`.github/workflows/deploy-webgl.yml`) is dormant and needs Unity license
-  secrets.
+All engine trees are active parallel tracks. See `ENGINES.md`. Do not describe
+them as legacy, reference-only, or not actively developed.
+
+- **`QUAHOG_Web/`** (Three.js / React Three Fiber + Rapier, Vite + TypeScript)
+  is the track this sandbox can run end to end.
+- **`MountHope_Unreal/`** and **`QUAHOG_Unreal/`** are UE 5.8 tracks. They are
+  not runnable here without Unreal Editor. Validate `MountHope_Unreal/` with
+  `Scripts/validate_scaffold.py` and `Scripts/check_cpp.py`. Do not claim a
+  UBT compile or a PIE playthrough unless one actually ran.
+- **`QUAHOG_Unity/`** (Unity 6 C#) and **`QUAHOG_Godot/`** / **`QUAHOG_GODOT1/`**
+  (Godot GDScript) need the Unity or Godot editors and cannot be built or
+  launched in this sandbox. The Unity WebGL CI workflow
+  (`.github/workflows/deploy-webgl.yml`) needs Unity license secrets before it
+  can produce a player. `tools/csharp/` can headless-compile Unity gameplay
+  scripts; say so only after it has been run.
 
 ### Running / building the web game (commands live in `QUAHOG_Web/README.md`)
 

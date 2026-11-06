@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -90,6 +91,7 @@ REQUIRED_FILES = [
     "Data/Dialogue/vertical_slice.json",
     "Data/Collectibles/vertical_slice.json",
     "Data/Radio/stations.json",
+    "Data/OSM/import_manifest.json",
     "Docs/VERTICAL_SLICE.md",
     "Docs/OSM_TO_UNREAL.md",
     "Docs/BUILD_WINDOWS.md",
@@ -104,6 +106,9 @@ REQUIRED_FILES = [
     "Source/MountHope/Tests/MHTimeOfDaySubsystemTest.cpp",
     "Source/MountHope/Tests/MHReputationSubsystemTest.cpp",
     "Source/MountHope/Tests/MHPoliceTest.cpp",
+    "Source/MountHope/Tests/MHDialogueSubsystemTest.cpp",
+    "Source/MountHope/Tests/MHEconomySubsystemTest.cpp",
+    "Source/MountHope/Tests/MHCollectibleSubsystemTest.cpp",
     "Scripts/build.sh",
     "Scripts/build.ps1",
     "Scripts/build.bat",
@@ -113,6 +118,7 @@ REQUIRED_FILES = [
     "Scripts/editor_bootstrap_vertical_slice.py",
     "Scripts/editor_create_enhanced_input.py",
     "Scripts/editor_import_osm.py",
+    "Scripts/prepare_osm_import.py",
     "Scripts/editor_import_southcoast_roads.py",
     "Scripts/editor_setup_navmesh.py",
     "Scripts/editor_create_hud_widget.py",
@@ -227,18 +233,23 @@ def validate_source_contract() -> None:
     for symbol in ("FailCurrentMission", "ApplyObjectiveCompletion", "TickStepTimer"):
         if symbol not in game_mode_source:
             fail(f"MHGameModeBase.cpp is missing mission-failure/timed-objective support: {symbol}")
+    for symbol in ("CompleteCurrentObjectiveFrom", "TryPayCurrentObjective", "NotifyCollectibleProgress"):
+        if symbol not in game_mode_source:
+            fail(f"MHGameModeBase.cpp is missing typed-objective support: {symbol}")
 
     mission_source = read_text("Source/MountHope/MHMissionSubsystem.cpp")
-    for symbol in ("RestartCurrentMission", "IsMissionInProgress"):
+    for symbol in ("RestartCurrentMission", "IsMissionInProgress", "CanAcceptCompletion", "CanAcceptCollection"):
         if symbol not in mission_source:
             fail(f"MHMissionSubsystem.cpp is missing: {symbol}")
 
     game_instance = read_text("Source/MountHope/MHGameInstance.cpp")
     if "LoadDialogueFromJson" not in game_instance:
         fail("MHGameInstance.cpp does not bootstrap dialogue JSON")
+    if "LoadOffersFromJson" not in game_instance:
+        fail("MHGameInstance.cpp does not bootstrap economy offers")
 
     dialogue_source = read_text("Source/MountHope/MHDialogueSubsystem.cpp")
-    for symbol in ("LoadDialogueFromJson", "StartConversation", "AdvanceConversation"):
+    for symbol in ("LoadDialogueFromJson", "StartConversation", "AdvanceConversation", "SelectChoice"):
         if symbol not in dialogue_source:
             fail(f"MHDialogueSubsystem.cpp is missing: {symbol}")
 
@@ -318,6 +329,17 @@ def validate_source_contract() -> None:
     collectible_source = read_text("Source/MountHope/MHCollectibleActor.cpp")
     if "CollectItem" not in collectible_source:
         fail("MHCollectibleActor.cpp does not call CollectItem")
+    if "NotifyCollectibleProgress" not in collectible_source or "ConsumePendingSetBonus" not in collectible_source:
+        fail("MHCollectibleActor.cpp does not apply set bonuses or collect objectives")
+
+    economy_source = read_text("Source/MountHope/MHEconomySubsystem.cpp")
+    for symbol in ("LoadOffersFromJson", "QuoteOfferPrice", "TryPurchaseOffer"):
+        if symbol not in economy_source:
+            fail(f"MHEconomySubsystem.cpp is missing: {symbol}")
+
+    collectible_subsystem = read_text("Source/MountHope/MHCollectibleSubsystem.cpp")
+    if "GetSetProgress" not in collectible_subsystem or "EvaluateSetBonuses" not in collectible_subsystem:
+        fail("MHCollectibleSubsystem.cpp is missing collectible-set support")
 
     radio_source = read_text("Source/MountHope/MHRadioSubsystem.cpp")
     for symbol in ("TuneToStation", "NextStation", "LoadStationsFromJson"):
@@ -458,10 +480,31 @@ def validate_missions() -> None:
             if step.get("weatherOnStart") not in (None, "Clear", "DenseFog", "CoastalRain", "Noreaster"):
                 fail(f"Mission step '{step.get('text')}' has an unknown weatherOnStart value")
             objective_type = step.get("objectiveType")
-            if objective_type not in (None, "reach", "timed", "survive"):
+            if objective_type not in (None, "reach", "timed", "survive", "talk", "pay", "collect"):
                 fail(f"Mission step '{step.get('text')}' has an unknown objectiveType: {objective_type}")
             if objective_type in ("timed", "survive") and not step.get("timeLimitSeconds", 0) > 0:
                 fail(f"Mission step '{step.get('text')}' is {objective_type} but has no positive timeLimitSeconds")
+            if objective_type == "talk" and not step.get("conversationId"):
+                fail(f"Talk step '{step.get('text')}' is missing conversationId")
+            if objective_type == "pay" and (not step.get("payOfferId") or not step.get("payAmount", 0) > 0):
+                fail(f"Pay step '{step.get('text')}' needs payOfferId and a positive payAmount")
+            if objective_type == "collect":
+                has_set = bool(step.get("collectSet"))
+                has_item = bool(step.get("collectItem"))
+                if has_set == has_item:
+                    fail(f"Collect step '{step.get('text')}' needs exactly one of collectSet or collectItem")
+                if not step.get("collectCount", 0) > 0 and has_set:
+                    fail(f"Collect step '{step.get('text')}' needs a positive collectCount")
+
+    seen_ids: set[str] = set()
+    for mission in missions:
+        mission_id = mission.get("id")
+        if not mission_id:
+            fail(f"Mission '{mission.get('title')}' is missing id")
+        elif mission_id in seen_ids:
+            fail(f"Duplicate mission id: {mission_id}")
+        else:
+            seen_ids.add(mission_id)
 
     for required_title in ("Off the Boat", "Gloria", "Big Mamie"):
         if required_title not in titles:
@@ -488,6 +531,30 @@ def validate_collectibles() -> None:
             fail(f"Collectible {item_id} missing name")
         if item.get("cashReward", 0) < 0:
             fail(f"Invalid cashReward for {item_id}")
+
+    sets = data.get("sets", [])
+    if not sets:
+        fail("No collectible sets defined in Data/Collectibles/vertical_slice.json")
+    seen_sets: set[str] = set()
+    for group in sets:
+        set_id = group.get("id")
+        if not set_id:
+            fail("Collectible set missing id")
+        if set_id in seen_sets:
+            fail(f"Duplicate collectible set id: {set_id}")
+        seen_sets.add(set_id)
+        if not group.get("name"):
+            fail(f"Collectible set {set_id} missing name")
+        members = group.get("members") or []
+        if not members:
+            fail(f"Collectible set {set_id} has no members")
+        if len(members) != len(set(members)):
+            fail(f"Collectible set {set_id} has duplicate members")
+        if group.get("bonusCash", 0) < 0:
+            fail(f"Collectible set {set_id} has a negative bonus")
+        for member in members:
+            if member not in seen:
+                fail(f"Collectible set {set_id} references unknown item {member}")
 
 
 def validate_radio_stations() -> None:
@@ -537,6 +604,22 @@ def validate_dialogue() -> None:
         if not lines:
             fail(f"Dialogue {conversation.get('id')} has no lines")
         total_lines += len(lines)
+        for line in lines:
+            if isinstance(line, str):
+                continue
+            if not isinstance(line, dict) or not line.get("text"):
+                fail(f"Dialogue {conversation.get('id')} has a line without text")
+            choices = line.get("choices") or []
+            if choices and line.get("endsConversation"):
+                fail(f"Dialogue {conversation.get('id')} line both offers choices and ends the conversation")
+            for choice in choices:
+                if not choice.get("text"):
+                    fail(f"Dialogue {conversation.get('id')} has a choice without text")
+                if choice.get("end"):
+                    continue
+                next_line = choice.get("nextLine")
+                if not isinstance(next_line, int) or next_line < 0 or next_line >= len(lines):
+                    fail(f"Dialogue {conversation.get('id')} choice '{choice.get('text')}' has nextLine out of range")
     if total_lines < 3:
         fail("Vertical slice requires at least three authored dialogue lines")
 
@@ -559,6 +642,24 @@ def validate_economy() -> None:
         if business.get("dailyIncome", 0) < 0:
             fail(f"Invalid dailyIncome for {bid}")
 
+    offers = data.get("offers", [])
+    if not offers:
+        fail("No offers defined in businesses.json")
+    seen_offers: set[str] = set()
+    for offer in offers:
+        offer_id = offer.get("id")
+        if not offer_id:
+            fail("Economy offer missing id")
+        if offer_id in seen_offers:
+            fail(f"Duplicate economy offer id: {offer_id}")
+        seen_offers.add(offer_id)
+        if not offer.get("name"):
+            fail(f"Economy offer {offer_id} missing name")
+        if offer.get("price", -1) < 0:
+            fail(f"Economy offer {offer_id} has an invalid price")
+        if not offer.get("category"):
+            fail(f"Economy offer {offer_id} missing category")
+
 
 AUTOMATION_TESTS = [
     "Source/MountHope/Tests/MHWantedSubsystemTest.cpp",
@@ -567,6 +668,9 @@ AUTOMATION_TESTS = [
     "Source/MountHope/Tests/MHTimeOfDaySubsystemTest.cpp",
     "Source/MountHope/Tests/MHReputationSubsystemTest.cpp",
     "Source/MountHope/Tests/MHPoliceTest.cpp",
+    "Source/MountHope/Tests/MHDialogueSubsystemTest.cpp",
+    "Source/MountHope/Tests/MHEconomySubsystemTest.cpp",
+    "Source/MountHope/Tests/MHCollectibleSubsystemTest.cpp",
 ]
 
 
@@ -587,6 +691,67 @@ def validate_existing_data_links() -> None:
             fail(f"referenced existing data is missing: {relative_path}")
 
 
+def validate_content_references() -> None:
+    """Cross-check mission objectives against dialogue, offers, and collectible sets."""
+    missions = load_json("Data/Missions/vertical_slice.json").get("missions", [])
+    conversations = {
+        conversation["id"]: conversation
+        for conversation in load_json("Data/Dialogue/vertical_slice.json").get("conversations", [])
+    }
+    offers = {
+        offer["id"]: offer
+        for offer in load_json("Data/Economy/businesses.json").get("offers", [])
+    }
+    sets = {
+        group["id"]: group
+        for group in load_json("Data/Collectibles/vertical_slice.json").get("sets", [])
+    }
+    items = {
+        item["id"]
+        for item in load_json("Data/Collectibles/vertical_slice.json").get("collectibles", [])
+    }
+
+    for mission in missions:
+        for step in mission.get("steps", []):
+            kind = step.get("objectiveType")
+            label = step.get("text")
+            if kind == "talk":
+                conversation = conversations.get(step.get("conversationId"))
+                if conversation is None:
+                    fail(f"Talk step '{label}' references unknown conversation '{step.get('conversationId')}'")
+                elif not conversation.get("onComplete", {}).get("completeObjective"):
+                    fail(f"Talk step '{label}' conversation must set onComplete.completeObjective")
+            elif kind == "pay":
+                offer = offers.get(step.get("payOfferId"))
+                if offer is None:
+                    fail(f"Pay step '{label}' references unknown offer '{step.get('payOfferId')}'")
+                elif offer.get("price") != step.get("payAmount"):
+                    fail(f"Pay step '{label}' payAmount does not match offer price")
+            elif kind == "collect":
+                if step.get("collectItem") and step["collectItem"] not in items:
+                    fail(f"Collect step '{label}' references unknown item '{step['collectItem']}'")
+                set_id = step.get("collectSet")
+                if set_id:
+                    group = sets.get(set_id)
+                    if group is None:
+                        fail(f"Collect step '{label}' references unknown set '{set_id}'")
+                    elif step.get("collectCount", 0) > len(group.get("members") or []):
+                        fail(f"Collect step '{label}' collectCount exceeds set size")
+
+
+def validate_osm_manifest() -> None:
+    script = PROJECT_ROOT / "Scripts" / "prepare_osm_import.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "OSM manifest check failed").strip()
+        fail(detail)
+
+
 def main() -> None:
     validate_uproject()
     validate_required_files()
@@ -602,6 +767,8 @@ def main() -> None:
     validate_gameplay_tags()
     validate_automation_tests()
     validate_existing_data_links()
+    validate_content_references()
+    validate_osm_manifest()
     print("MountHope_Unreal scaffold validation passed")
 
 

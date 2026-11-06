@@ -2,11 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "MHMissionSubsystem.h"
 #include "MHGameModeBase.generated.h"
 
 class AMHMissionTriggerActor;
 class USoundBase;
-struct FMHMissionStep;
 
 UCLASS()
 class MOUNTHOPE_API AMHGameModeBase : public AGameModeBase
@@ -23,7 +23,18 @@ public:
     bool CompleteCurrentObjective(bool bPlayerInVehicle);
 
     UFUNCTION(BlueprintCallable, Category = "Mount Hope|Mission")
+    bool CompleteCurrentObjectiveFrom(EMHObjectiveCompletionChannel Channel, FName ContextId, bool bPlayerInVehicle);
+
+    UFUNCTION(BlueprintCallable, Category = "Mount Hope|Mission")
     bool TryCompleteVehicleObjective(bool bPlayerInVehicle);
+
+    // Spend the current Pay step's catalog offer, then complete it. DiscountPercent clamps inside the economy quote.
+    UFUNCTION(BlueprintCallable, Category = "Mount Hope|Mission")
+    bool TryPayCurrentObjective(int32 DiscountPercent, bool bPlayerInVehicle);
+
+    // Complete a Collect step once CanAcceptCollection passes.
+    UFUNCTION(BlueprintCallable, Category = "Mount Hope|Mission")
+    bool NotifyCollectibleProgress(FName ItemId, FName SetId, int32 FoundInSet);
 
     // Fail the in-progress mission (if any): restart it from its first step and
     // broadcast UMHMissionSubsystem::OnMissionFailed. No-op if no mission active.

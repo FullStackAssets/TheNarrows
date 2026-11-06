@@ -31,9 +31,9 @@ pull, not a blocker for the first Unreal slice.
 | On-foot traversal | Third-person walking, camera-relative movement, interaction input. | `MHPlayerCharacter` |
 | Driving | One drivable heavy-feeling car with chase camera and enter/exit flow. | `MHVehiclePawn`, `MHPlayerCharacter::RequestEnterExitVehicle` |
 | NPCs | Ambient wandering/fleeing pedestrians (AIModule/NavigationSystem) and interactable mission givers; Mass AI can expand crowd density later. | `MHPedestrianCharacter`, `MHInteractable`, Mass plugins |
-| Missions | One authored mission with start, fail, complete, and reward states. | `MHMissionSubsystem` |
-| Economy | Cash reward/cost loop for mission reward, repair, bribe, or item purchase. | `MHEconomySubsystem` |
-| Dialogue | Short mission setup and world flavor barks through interactable actors. | `MHInteractable` |
+| Missions | Authored campaign with reach, timed, survive, talk, pay, and collect steps, plus fail/restart. | `MHMissionSubsystem` |
+| Economy | Cash reward/cost loop, business ownership, and a quoted offer catalog (bribe, medkit, vest, repair). | `MHEconomySubsystem` |
+| Dialogue | Short mission setup and world flavor, including two-choice branches. | `MHDialogueSubsystem`, `MHInteractable` |
 | OSM world | Import roads/water/building blockout in Unreal centimeters. | `MHOpenWorldSubsystem` |
 | Police/wanted | Crime reporting, heat decay, wanted stars, scaling chase pursuers. | `MHWantedSubsystem`, `MHPoliceUnitPawn`, `MHPoliceSpawnerActor` |
 | Reputation | Faction standing gated by mission/shop outcomes. | `MHReputationSubsystem` |
@@ -73,9 +73,9 @@ blockout before those missions' trigger volumes are reachable in PIE.
 - The level opens in Unreal and streams a playable city graybox.
 - Player can walk, enter a car, drive, exit, and re-enter.
 - At least one NPC starts a mission through an interaction prompt.
-- Mission state changes from inactive to active to complete.
-- Economy balance changes after mission completion.
-- Dialogue displays at least three authored lines.
+- Mission state changes from inactive to active to complete, including a talk step, a collect step, and a pay step.
+- Economy balance changes after mission completion and after buying a catalog offer.
+- Dialogue displays at least three authored lines, and one exchange offers two choices (`1` / `2`).
 - Roads, water, and at least one landmark/blockout zone come from OSM-derived
   source data.
 - Lighting, post-process, and materials target cinematic realism, even if final

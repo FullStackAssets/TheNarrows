@@ -398,7 +398,24 @@ void UMHGameHudWidget::SetRadioText(const FText& Radio)
 
 void UMHGameHudWidget::HandleDialogueLineChanged(FName ConversationId, FName Speaker, FText LineText)
 {
-    SetDialogueLine(FText::FromName(Speaker), LineText);
+    FString Shown = LineText.ToString();
+    if (UGameInstance* GameInstance = GetGameInstance())
+    {
+        if (UMHDialogueSubsystem* DialogueSubsystem = GameInstance->GetSubsystem<UMHDialogueSubsystem>())
+        {
+            const int32 ChoiceCount = DialogueSubsystem->GetCurrentChoiceCount();
+            for (int32 ChoiceIndex = 0; ChoiceIndex < ChoiceCount; ++ChoiceIndex)
+            {
+                FString ChoiceText;
+                if (DialogueSubsystem->GetCurrentChoiceText(ChoiceIndex, ChoiceText))
+                {
+                    Shown += FString::Printf(TEXT("\n%d) %s"), ChoiceIndex + 1, *ChoiceText);
+                }
+            }
+        }
+    }
+
+    SetDialogueLine(FText::FromName(Speaker), FText::FromString(Shown));
 }
 
 void UMHGameHudWidget::HandleDialogueEnded(FName ConversationId)

@@ -56,5 +56,39 @@
       "cashReward": 220,
       "pos": [-10515.0, 0.0, 47415.0]
     }
+  ],
+  "sets": [
+    {
+      "id": "bethel_pew",
+      "name": "Bethel Pew",
+      "members": ["scrimshaw_bethel_pew"],
+      "bonusCash": 0
+    },
+    {
+      "id": "narrows_scrimshaw",
+      "name": "Narrows Scrimshaw",
+      "members": [
+        "scrimshaw_bethel_pew",
+        "scrimshaw_fish_pier",
+        "scrimshaw_anvil_garage",
+        "scrimshaw_quohog_republic"
+      ],
+      "bonusCash": 400
+    },
+    {
+      "id": "south_coast_scrimshaw",
+      "name": "South Coast Scrimshaw",
+      "members": [
+        "scrimshaw_bethel_pew",
+        "scrimshaw_fish_pier",
+        "scrimshaw_anvil_garage",
+        "scrimshaw_quohog_republic",
+        "scrimshaw_off_the_hook",
+        "scrimshaw_battleship_cove",
+        "scrimshaw_champion_gym",
+        "scrimshaw_heritage_marina"
+      ],
+      "bonusCash": 800
+    }
   ]
 }

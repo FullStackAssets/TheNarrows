@@ -2,6 +2,7 @@
 
 #include "MHCollectibleSubsystem.h"
 #include "MHDialogueSubsystem.h"
+#include "MHEconomySubsystem.h"
 #include "MHGameStateSubsystem.h"
 #include "MHMissionSubsystem.h"
 #include "MHRadioSubsystem.h"
@@ -34,6 +35,11 @@ void UMHGameInstance::Init()
     if (UMHRadioSubsystem* RadioSubsystem = GetSubsystem<UMHRadioSubsystem>())
     {
         RadioSubsystem->LoadStationsFromJson(RadioPath);
+    }
+
+    if (UMHEconomySubsystem* EconomySubsystem = GetSubsystem<UMHEconomySubsystem>())
+    {
+        EconomySubsystem->LoadOffersFromJson(EconomyPath);
     }
 
     if (UMHGameStateSubsystem* GameStateSubsystem = GetSubsystem<UMHGameStateSubsystem>())

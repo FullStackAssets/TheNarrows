@@ -1,55 +1,43 @@
-# Engine reconciliation
+# Engine tracks
 
-This repo accumulated **three** engine tracks for the same vertical slice. As of
-this reconciliation, there is one canonical engine; the rest are reference.
+The Narrows is developed as **active parallel engine tracks**. They share the
+South Coast setting, the OSM-grounded map idea, and the original crime-game
+fiction. No track in this file is a retired reference copy.
 
-## Decision
+This note does not claim that every track has been compiled or played. The
+cloud sandbox used for this work can run the browser project. It does not
+include Unreal Editor, Unity Editor, or Godot Editor, so those tracks were not
+built or launched here.
 
-**Canonical: `QUAHOG_Web/` — Three.js / React Three Fiber.**
+## Tracks
 
-Rationale:
-- It matches the locked engine decision: *Web 3D, buildable live in-session,
-  browser-playable.*
-- It runs on **real** OpenStreetMap data for the New Bedford waterfront (316
-  buildings, 561 roads, 15 landmarks) and is **already deployed**
-  (https://projectsouthcoast.vercel.app).
+| Track | Engine | In this repo | Not shown by this sandbox |
+| --- | --- | --- | --- |
+| `QUAHOG_Web/` | Three.js / React Three Fiber + Rapier | Browser game. Vite build is the typecheck. OSM New Bedford slice is committed. | A fresh production deploy was not run for this note. The recorded public URL is https://projectsouthcoast.vercel.app. |
+| `MountHope_Unreal/` | Unreal Engine 5.8 | PC/console vertical slice: C++, JSON campaign, Python scaffold checks (`validate_scaffold.py`, `check_cpp.py`). | UBT compile, cook, and the UE automation tests were not run. |
+| `QUAHOG_Unreal/` | Unreal Engine 5.8 | Parallel Unreal project. Earlier bootstrap whose mission/economy/world-slice patterns also live in `MountHope_Unreal/`. See [`QUAHOG_Unreal/TRACK.md`](QUAHOG_Unreal/TRACK.md). | No Unreal compile was run. |
+| `QUAHOG_Unity/` | Unity 6 (`6000.0.23f1`) | Parallel Unity track, including the WebGL slice from PR #18. See [`QUAHOG_Unity/TRACK.md`](QUAHOG_Unity/TRACK.md). | Unity Editor / Build Automation was not run. `tools/csharp/` can headless-compile gameplay scripts; that was not run for this note. |
+| `QUAHOG_Godot/` | Godot 4 (GDScript) | Parallel Godot port. Setup: `QUAHOG_Godot/GODOT_SETUP.md`. See [`QUAHOG_Godot/TRACK.md`](QUAHOG_Godot/TRACK.md). | Godot was not launched. |
+| `QUAHOG_GODOT1/` | Godot 4.6 (`project.godot`, features `4.6`) | Parallel Godot project named **The Narrows** (`res://scenes/main.tscn`). | Godot was not launched. |
 
-## New PC/console track
+`QUAHOG_Unreal/LEGACY.md`, `QUAHOG_Unity/LEGACY.md`, and `QUAHOG_Godot/LEGACY.md`
+only redirect to each track's `TRACK.md`, so older links still resolve.
 
-`MountHope_Unreal/` is a separate Unreal Engine 5 vertical-slice scaffold for
-the premium PC/console direction. It does not replace the current runnable web
-slice in this sandbox; it captures the next product direction: single-player,
-GTA-like open-world crime structure, photoreal presentation, heavy cinematic
-vehicles, OSM-grounded map import, missions, NPCs, economy, and dialogue.
+## History worth keeping
 
-## What the other tracks were
+- Street-life pedestrians and arcade car-feel notes from the Unity slice were
+  also brought into `QUAHOG_Web/` (`StreetLife.tsx` and the web car tuning).
+  The Unity project remains an active track.
+- `QUAHOG_Unreal/` is where the JSON-driven Unreal mission, economy, and world
+  slice were first sketched. `MountHope_Unreal/` continues that PC/console slice
+  with the systems described in `MountHope_Unreal/Docs/VERTICAL_SLICE.md`.
+- `quahog-project-files/mapdata/` is the shared OSM pipeline (GeoJSON, OBJ, and
+  the web slice). `MountHope_Unreal/Scripts/prepare_osm_import.py` only reads
+  those artifacts and writes an Unreal-local import manifest. `tools/mapgen/`
+  remains the older Unity-oriented fetcher.
 
-| Track | Engine | Status | Notes |
-|-------|--------|--------|-------|
-| `QUAHOG_Web/` | Three.js / R3F + Rapier | **canonical** | real data, deployed, walk/drive/collision + street life |
-| `MountHope_Unreal/` | Unreal Engine 5 | PC/console scaffold | separate vertical-slice track; requires Unreal editor |
-| `QUAHOG_Unreal/` | Unreal Engine 5.8 | legacy | earlier UE bootstrap; framework merged into `MountHope_Unreal/` — see `QUAHOG_Unreal/LEGACY.md` |
-| `QUAHOG_Unity/` (PR #18) | Unity C# → WebGL | legacy | same slice idea; data was a placeholder grid; needs the Unity editor to build |
-| `QUAHOG_Godot/` | Godot GDScript | legacy | earlier port; predates the web decision |
+## What to run where
 
-## What was salvaged from the Unity slice (PR #18)
-
-Ported forward into `QUAHOG_Web/` rather than kept as C#:
-
-- **Street life** — `StreetLife.cs` (kinematic wandering pedestrians + decorative
-  patrol cars) → `QUAHOG_Web/src/world/StreetLife.tsx`, retargeted to follow the
-  real OSM road network.
-- **Car feel** — arcade tuning constants from `CarController.cs` (top/reverse
-  speed, steering rate, lateral grip) informed the web car's tuning.
-
-Not ported (Unity-specific, kept only as reference):
-- `GisCity.cs` / `GeoJson.cs` / `EarClipping.cs` — the web pipeline does this in
-  Python (`quahog-project-files/mapdata/make_slice.py`) + R3F.
-- `tools/csharp/` headless compile/test sandbox and the `compile-check` skill.
-- `tools/mapgen/fetch_osm.py` — same Overpass source as the canonical pipeline.
-
-## Map pipeline
-
-Canonical: `quahog-project-files/mapdata/` (`split_layers.py`, `bake_meshes.py`,
-`make_slice.py`) → real geometry for both cities, plus the web slice blockout.
-`tools/mapgen/` is the older Unity-targeted fetcher and is superseded for web.
+- Browser loop: `QUAHOG_Web/` (`npm run dev`, `npm run build`). See `QUAHOG_Web/README.md`.
+- Unreal slice checks that do not need the editor: `python3 MountHope_Unreal/Scripts/validate_scaffold.py` and `python3 MountHope_Unreal/Scripts/check_cpp.py`.
+- Unreal, Unity, and Godot playthroughs need the matching editor on a machine that has it.

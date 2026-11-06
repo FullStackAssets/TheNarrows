@@ -4,9 +4,10 @@ Unreal Engine 5 vertical-slice track for **Mount Hope**, a single-player
 PC/console open-world crime game set on a fictionalized but OSM-grounded
 Massachusetts South Coast.
 
-This branch is separate from the canonical web slice. The web project remains
-the playable reference for the current concept, controls, map data, and tone;
-the Unreal project is the premium PC/console path.
+This tree is the Unreal Engine 5 PC/console track, developed in parallel with
+the browser track in `QUAHOG_Web/` and the other engine tracks listed in
+`../ENGINES.md`. The browser project is the one this sandbox can run. This
+project needs Unreal Editor 5.8 to compile, cook, or play.
 
 ## Target
 

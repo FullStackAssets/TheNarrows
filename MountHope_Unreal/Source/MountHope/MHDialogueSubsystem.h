@@ -40,6 +40,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Mount Hope|Dialogue")
     bool AdvanceConversation(bool bPlayerInVehicle);
 
+    // Pick a choice on the current line. Returns false when the line has no
+    // choices or the index is out of range; does not fall through to Advance.
+    UFUNCTION(BlueprintCallable, Category = "Mount Hope|Dialogue")
+    bool SelectChoice(int32 ChoiceIndex, bool bPlayerInVehicle);
+
+    UFUNCTION(BlueprintPure, Category = "Mount Hope|Dialogue")
+    int32 GetCurrentChoiceCount() const;
+
+    UFUNCTION(BlueprintPure, Category = "Mount Hope|Dialogue")
+    bool GetCurrentChoiceText(int32 ChoiceIndex, FString& OutText) const;
+
     UFUNCTION(BlueprintCallable, Category = "Mount Hope|Dialogue")
     void EndConversation();
 
@@ -62,6 +73,8 @@ private:
     UPROPERTY()
     int32 ActiveLineIndex = INDEX_NONE;
 
-    bool ApplyCompletion(const FMHDialogueCompletion& Completion, bool bPlayerInVehicle);
+    bool ApplyCompletion(const FMHDialogueCompletion& Completion, bool bPlayerInVehicle, FName ConversationId);
     void BroadcastCurrentLine();
+    bool FinishConversation(bool bPlayerInVehicle);
+    bool CurrentLineHasChoices() const;
 };

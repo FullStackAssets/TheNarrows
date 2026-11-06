@@ -19,7 +19,25 @@ enum class EMHObjectiveType : uint8
     Timed UMETA(DisplayName = "Timed"),
     // Stay alive for TimeLimitSeconds; the step auto-completes when the timer
     // runs out (a "hold out" beat). No world target needed.
-    Survive UMETA(DisplayName = "Survive")
+    Survive UMETA(DisplayName = "Survive"),
+    // Finish a specific conversation (ContextId is the conversation id).
+    Talk UMETA(DisplayName = "Talk"),
+    // Buy a catalog offer (ContextId is the offer id). Cash is spent by the game mode.
+    Pay UMETA(DisplayName = "Pay"),
+    // Collect items from a set, or one specific item (ContextId is the set or item id).
+    Collect UMETA(DisplayName = "Collect")
+};
+
+// How a caller is trying to complete the current step. Reach/Timed still accept
+// world triggers and dialogue; the newer types only accept their own channel.
+UENUM(BlueprintType)
+enum class EMHObjectiveCompletionChannel : uint8
+{
+    World UMETA(DisplayName = "World"),
+    Dialogue UMETA(DisplayName = "Dialogue"),
+    Payment UMETA(DisplayName = "Payment"),
+    Collection UMETA(DisplayName = "Collection"),
+    Timer UMETA(DisplayName = "Timer")
 };
 
 USTRUCT(BlueprintType)
@@ -65,12 +83,33 @@ struct FMHMissionStep
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
     FString WeatherOnStart;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    FName ConversationId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    FName PayOfferId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    int32 PayAmount = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    FName CollectSetId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    FName CollectItemId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    int32 CollectCount = 0;
 };
 
 USTRUCT(BlueprintType)
 struct FMHMission
 {
     GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
+    FName Id = NAME_None;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mount Hope|Mission")
     FString Title;
@@ -134,4 +173,16 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Mount Hope|Mission")
     bool GetCurrentStep(FMHMissionStep& OutStep) const;
+
+    UFUNCTION(BlueprintPure, Category = "Mount Hope|Mission")
+    bool FindMissionIndexById(FName MissionId, int32& OutIndex) const;
+
+    // True when Channel/ContextId is a legal way to complete the current step.
+    // Does not check vehicle, heat, cash, or collected counts — callers own those.
+    UFUNCTION(BlueprintPure, Category = "Mount Hope|Mission")
+    bool CanAcceptCompletion(EMHObjectiveCompletionChannel Channel, FName ContextId) const;
+
+    // Collection channel plus the count gate (FoundInSet is ignored for item objectives).
+    UFUNCTION(BlueprintPure, Category = "Mount Hope|Mission")
+    bool CanAcceptCollection(FName ItemId, FName SetId, int32 FoundInSet) const;
 };

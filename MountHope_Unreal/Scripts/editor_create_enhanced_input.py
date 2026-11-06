@@ -6,7 +6,8 @@ Run inside Unreal Editor 5.8 (Python Editor Script Plugin):
   Tools → Execute Python Script → select this file
 
 Creates /Game/Input/IMC_Default plus IA_Move, IA_Look, IA_Sprint, IA_Interact,
-IA_EnterExitVehicle with standard WASD + mouse + E/F bindings.
+IA_EnterExitVehicle, IA_DialogueChoice1, and IA_DialogueChoice2 with WASD,
+mouse, E/F, and 1/2 bindings.
 
 Assign IMC_Default and the Input Actions on BP_MHPlayerCharacter (or the C++
 defaults will pick them up if set on the class defaults in editor).
@@ -30,6 +31,8 @@ ACTION_SPECS = (
     ("IA_Sprint", unreal.InputActionValueType.BOOLEAN),
     ("IA_Interact", unreal.InputActionValueType.BOOLEAN),
     ("IA_EnterExitVehicle", unreal.InputActionValueType.BOOLEAN),
+    ("IA_DialogueChoice1", unreal.InputActionValueType.BOOLEAN),
+    ("IA_DialogueChoice2", unreal.InputActionValueType.BOOLEAN),
 )
 
 
@@ -102,6 +105,8 @@ def configure_mappings(
     sprint = actions["IA_Sprint"]
     interact = actions["IA_Interact"]
     vehicle = actions["IA_EnterExitVehicle"]
+    choice1 = actions["IA_DialogueChoice1"]
+    choice2 = actions["IA_DialogueChoice2"]
 
     imc.map_key(move, _key("W"))
     imc.map_key(move, _key("S"), [unreal.InputModifierNegate()])
@@ -113,6 +118,8 @@ def configure_mappings(
     imc.map_key(sprint, _key("LeftShift"))
     imc.map_key(interact, _key("E"))
     imc.map_key(vehicle, _key("F"))
+    imc.map_key(choice1, _key("One"))
+    imc.map_key(choice2, _key("Two"))
 
     unreal.EditorAssetLibrary.save_loaded_asset(imc)
     log("Configured key mappings on IMC_Default")
@@ -132,6 +139,8 @@ def assign_to_character_defaults(actions: dict[str, unreal.InputAction], imc: un
         "IA_Sprint": actions["IA_Sprint"],
         "IA_Interact": actions["IA_Interact"],
         "IA_EnterExitVehicle": actions["IA_EnterExitVehicle"],
+        "IA_DialogueChoice1": actions["IA_DialogueChoice1"],
+        "IA_DialogueChoice2": actions["IA_DialogueChoice2"],
     }
     for prop_name, value in property_map.items():
         try:
