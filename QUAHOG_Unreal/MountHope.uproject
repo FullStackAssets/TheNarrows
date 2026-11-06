@@ -2,7 +2,7 @@
   "FileVersion": 3,
   "EngineAssociation": "5.8",
   "Category": "Games",
-  "Description": "Mount Hope UE5 console/PC foundation.",
+  "Description": "Active parallel UE5 C++ track (QUAHOG_Unreal). Separate from MountHope_Unreal. Not a cooked build.",
   "Modules": [
     {
       "Name": "MountHope",

@@ -101,6 +101,9 @@ def validate_default_config():
     default_game = (ROOT / "Config" / "DefaultGame.ini").read_text(encoding="utf-8")
     assert "GameInstanceClass=/Script/MountHope.MountHopeGameInstance" in default_game
     assert "GlobalDefaultGameMode=/Script/MountHope.MountHopeGameMode" in default_game
+    assert "SaveSlotName=QuahogUnrealSlot" in default_game
+    assert "SlicePath=../QUAHOG_Web/public/slice-newbedford.json" in default_game
+    assert "[/Script/MountHope.MountHopeGameInstance]" in default_game
 
 
 def validate_framework_wiring():
@@ -111,8 +114,41 @@ def validate_framework_wiring():
     assert "SetupPlayerInputComponent" in char_cpp, "Character input binding missing"
     assert "TryCompleteVehicleObjective" in mode_cpp, "Vehicle objective helper missing"
     assert "RefreshObjectiveTrigger" in mode_cpp, "Objective trigger refresh missing"
+    assert "ResolveSaveSlotName" in mode_cpp, "Save slot must come from the game instance"
     assert "SetTriggerRadius" in trigger_cpp, "Trigger radius setter missing"
     assert "ResetConsumed" in trigger_cpp, "Trigger consumed reset missing"
+
+
+def validate_slice_loader_source():
+    """Source-text checks for the loader rules. This does not execute them."""
+    loader = (ROOT / "Source" / "MountHope" / "Private" / "MHWorldSliceSubsystem.cpp").read_text(encoding="utf-8")
+    assert "bool Slice2DToWorld" in loader, "Slice2DToWorld helper missing"
+    assert "-NorthMeters" in loader, "2D north axis must map to -Z"
+    assert "TryGetStringField" in loader, "null road names must not use GetStringField"
+    assert "buildingsStreamed" in loader, "streamed-building note missing"
+    assert "FMHWaterPolygon" in loader, "water rings are not loaded"
+
+    slot = "QuahogUnrealSlot"
+    other_slot = "MountHope" + "Slot"
+    hits = []
+    for path in (ROOT / "Source").rglob("*"):
+        if path.suffix not in {".h", ".cpp", ".cs"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if other_slot in text:
+            hits.append(str(path.relative_to(ROOT)))
+    assert not hits, f"{other_slot} must not be the save slot in this track: {hits}"
+    instance = (ROOT / "Source" / "MountHope" / "Public" / "MountHopeGameInstance.h").read_text(encoding="utf-8")
+    game_state = (ROOT / "Source" / "MountHope" / "Public" / "MHGameStateSubsystem.h").read_text(encoding="utf-8")
+    assert slot in instance and slot in game_state
+
+
+def validate_data_contract():
+    tools = Path(__file__).resolve().parent
+    sys.path.insert(0, str(tools))
+    from slice_contract import validate_committed_slice
+
+    return validate_committed_slice()
 
 
 if __name__ == "__main__":
@@ -124,9 +160,15 @@ if __name__ == "__main__":
     validate_economy()
     validate_default_config()
     validate_framework_wiring()
-    print("MountHope Unreal bootstrap validation passed (UE 5.8 target).")
+    validate_slice_loader_source()
+    summary = validate_data_contract()
+    print("QUAHOG_Unreal bootstrap validation passed (UE 5.8 target, source and data only).")
     print(
-        "NOTE: QUAHOG_Unreal/ is legacy. Use MountHope_Unreal/ — "
-        "see QUAHOG_Unreal/LEGACY.md",
+        f"data: roads={summary['roads']} landmarks={summary['landmarks']} "
+        f"water_rings={summary['water_rings']} buildings={summary['buildings']}"
+    )
+    print(
+        "NOTE: active development check. Unreal Editor, UnrealBuildTool, "
+        "automation tests, PIE, and packaging were not run.",
         file=sys.stderr,
     )

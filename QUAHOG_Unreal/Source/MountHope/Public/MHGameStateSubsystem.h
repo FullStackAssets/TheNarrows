@@ -86,8 +86,8 @@ public:
     bool LoadBusinessesFromJson(const FString& RelativeOrAbsolutePath);
 
     UFUNCTION(BlueprintCallable, Category = "MountHope|Save")
-    bool SaveToSlot(const FString& SlotName = TEXT("MountHopeSlot"), int32 UserIndex = 0) const;
+    bool SaveToSlot(const FString& SlotName = TEXT("QuahogUnrealSlot"), int32 UserIndex = 0) const;
 
     UFUNCTION(BlueprintCallable, Category = "MountHope|Save")
-    bool LoadFromSlot(const FString& SlotName = TEXT("MountHopeSlot"), int32 UserIndex = 0);
+    bool LoadFromSlot(const FString& SlotName = TEXT("QuahogUnrealSlot"), int32 UserIndex = 0);
 };

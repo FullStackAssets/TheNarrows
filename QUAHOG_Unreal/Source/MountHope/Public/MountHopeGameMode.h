@@ -31,4 +31,5 @@ protected:
 private:
     bool IsWorldTargetObjective(const FMHMissionStep& Step) const;
     void RefreshObjectiveTrigger();
+    FString ResolveSaveSlotName() const;
 };
