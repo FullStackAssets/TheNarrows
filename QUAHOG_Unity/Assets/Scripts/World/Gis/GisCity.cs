@@ -2,29 +2,40 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Quahog.SouthCoast;
 
 namespace Quahog.SouthCoast.Gis
 {
     /// <summary>
-    /// Builds a map-accurate, low-poly city block from real GIS data (a GeoJSON
-    /// FeatureCollection in lon/lat). Roads become flat ribbon meshes; building
-    /// footprints are extruded to their tagged height; water areas are filled flat.
+    /// Builds a map-accurate, low-poly city block from a shared map contract
+    /// (web slice, south-coast road graph, or the Unity playable clip) or from a
+    /// GeoJSON FeatureCollection in lon/lat. Roads become flat ribbon meshes;
+    /// building footprints are extruded; water areas are filled flat.
     ///
     /// This is a drop-in replacement for <see cref="TownGreybox"/>: it exposes the
     /// same <see cref="PlayerSpawn"/> / <see cref="VehicleSpawn"/> so the bootstrap
     /// can use either interchangeably. Geometry is merged into a few large meshes
     /// (UInt32 indices) to keep WebGL draw calls low.
     ///
-    /// Coordinate convention matches the rest of the project: X = east, Z = north,
-    /// Y = up, ground top at y = 0. lon/lat are projected with an equirectangular
-    /// approximation centred on the dataset — accurate to well under a metre across
-    /// a single district.
+    /// Coordinate convention: X = east, Z = north, Y = up, ground top at y = 0.
+    /// Slice and road-graph documents are already in those metres. A GeoJSON
+    /// file is projected equirectangular about its own lon/lat bbox centre.
+    /// Three.js flips north to -Z; this mesh does not.
     /// </summary>
     public class GisCity : MonoBehaviour
     {
         // ---- Public API the integration layer depends on (matches TownGreybox). ----
         public Vector3 PlayerSpawn { get; private set; }
         public Vector3 VehicleSpawn { get; private set; }
+
+        /// <summary>Slice origin in Unity metres when the document is centred there; otherwise the projection origin.</summary>
+        public Vector3 DistrictCenter { get; private set; }
+
+        /// <summary>Drivable centre-lines in Unity metres, for kinematic street life.</summary>
+        public IReadOnlyList<TrafficRoute> TrafficRoutes { get; private set; }
+
+        /// <summary>Contract id from <see cref="MapContracts"/> (web-slice, unity-playable-clip, …).</summary>
+        public string Contract { get; private set; }
 
         private const float GroundTopY = 0f;
 
@@ -34,11 +45,7 @@ namespace Quahog.SouthCoast.Gis
         private Material[] _matBuildings; // indexed by (int)BuildingCategory
         private Material _matWater;
 
-        // Equirectangular projection origin + scale.
-        private double _lon0, _lat0;
-        private double _mPerLon, _mPerLat;
-
-        // World-space bounds of all projected geometry (for the ground plane).
+        // World-space bounds of all geometry (for the ground plane).
         private float _minX = float.MaxValue, _maxX = float.MinValue;
         private float _minZ = float.MaxValue, _maxZ = float.MinValue;
 
@@ -61,7 +68,8 @@ namespace Quahog.SouthCoast.Gis
             {
                 var city = Build(ta.text);
                 if (city == null) return null;
-                Debug.Log($"[GisCity] Built '{resourcePath}'.");
+                Debug.Log($"[GisCity] Built '{resourcePath}' contract={city.Contract} " +
+                          $"routes={(city.TrafficRoutes == null ? 0 : city.TrafficRoutes.Count)}.");
                 return city;
             }
             catch (Exception e)
@@ -71,72 +79,50 @@ namespace Quahog.SouthCoast.Gis
             }
         }
 
-        /// <summary>Builds the city from raw GeoJSON text. Returns null on empty data.</summary>
-        public static GisCity Build(string geoJsonText)
+        /// <summary>
+        /// Builds the city from a shared map contract, the Unity playable clip, or
+        /// a GeoJSON FeatureCollection. Returns null when there is nothing to mesh.
+        /// </summary>
+        public static GisCity Build(string mapText)
         {
-            GeoData data = GeoJson.Parse(geoJsonText);
-            if (data.Roads.Count == 0 && data.Buildings.Count == 0)
+            MapDocument doc = MapContracts.Parse(mapText);
+            if (doc == null || (doc.Roads.Count == 0 && doc.Buildings.Count == 0))
             {
-                Debug.LogWarning("[GisCity] GeoJSON contained no roads or buildings.");
+                Debug.LogWarning("[GisCity] Map text contained no roads or buildings.");
                 return null;
             }
 
             var root = new GameObject("GisCity");
             var city = root.AddComponent<GisCity>();
-            city.BuildInternal(data);
+            city.BuildInternal(doc);
             return city;
         }
 
-        private void BuildInternal(GeoData data)
+        private void BuildInternal(MapDocument doc)
         {
             CreateMaterials();
-            ComputeProjection(data);
-
-            BuildRoads(data.Roads);     // also extends bounds
-            BuildBuildings(data.Buildings);
-            BuildWater(data.Water);
-            BuildGround();              // sized to the bounds gathered above
-            ChooseSpawns(data.Roads);
+            Contract = doc.Contract;
+            BuildRoads(doc.Roads);
+            BuildBuildings(doc.Buildings);
+            BuildWater(doc.Water);
+            BuildGround();
+            ChooseSpawns(doc);
+            TrafficRoutes = StreetRoutes.FromRoads(doc.Roads);
+            DistrictCenter = new Vector3(PlayerSpawn.x, 0f, PlayerSpawn.z);
         }
 
-        // -----------------------------------------------------------------
-        // Projection
-        // -----------------------------------------------------------------
-
-        private void ComputeProjection(GeoData data)
+        private void ExtendBounds(float x, float z)
         {
-            // Origin = centre of the lon/lat bounding box of all input coordinates.
-            double minLon = double.MaxValue, maxLon = double.MinValue;
-            double minLat = double.MaxValue, maxLat = double.MinValue;
-
-            void Acc(LonLat p)
-            {
-                if (p.Lon < minLon) minLon = p.Lon;
-                if (p.Lon > maxLon) maxLon = p.Lon;
-                if (p.Lat < minLat) minLat = p.Lat;
-                if (p.Lat > maxLat) maxLat = p.Lat;
-            }
-
-            foreach (var r in data.Roads) foreach (var p in r.Line) Acc(p);
-            foreach (var b in data.Buildings) foreach (var p in b.Ring) Acc(p);
-            foreach (var w in data.Water) foreach (var p in w.Ring) Acc(p);
-
-            _lon0 = (minLon + maxLon) * 0.5;
-            _lat0 = (minLat + maxLat) * 0.5;
-            _mPerLat = 111320.0;
-            _mPerLon = 111320.0 * Math.Cos(_lat0 * Math.PI / 180.0);
-        }
-
-        /// <summary>Projects lon/lat to local metres (X east, Z north) at y = 0.</summary>
-        private Vector3 Project(LonLat p)
-        {
-            float x = (float)((p.Lon - _lon0) * _mPerLon);
-            float z = (float)((p.Lat - _lat0) * _mPerLat);
             if (x < _minX) _minX = x;
             if (x > _maxX) _maxX = x;
             if (z < _minZ) _minZ = z;
             if (z > _maxZ) _maxZ = z;
-            return new Vector3(x, 0f, z);
+        }
+
+        private Vector3 Place(ProjectedPoint p, float y)
+        {
+            ExtendBounds(p.East, p.North);
+            return new Vector3(p.East, y, p.North);
         }
 
         // -----------------------------------------------------------------
@@ -223,7 +209,7 @@ namespace Quahog.SouthCoast.Gis
         // Roads
         // -----------------------------------------------------------------
 
-        private void BuildRoads(List<RoadFeature> roads)
+        private void BuildRoads(List<ProjectedRoad> roads)
         {
             var verts = new List<Vector3>();
             var tris = new List<int>();
@@ -231,8 +217,8 @@ namespace Quahog.SouthCoast.Gis
 
             foreach (var road in roads)
             {
-                var pts = new List<Vector3>(road.Line.Count);
-                foreach (var ll in road.Line) pts.Add(Project(ll));
+                var pts = new List<Vector3>(road.Points.Count);
+                foreach (var p in road.Points) pts.Add(Place(p, 0f));
                 AddRoadRibbon(pts, road.Width, roadY, verts, tris);
             }
 
@@ -276,7 +262,7 @@ namespace Quahog.SouthCoast.Gis
         // Buildings
         // -----------------------------------------------------------------
 
-        private void BuildBuildings(List<BuildingFeature> buildings)
+        private void BuildBuildings(List<ProjectedBuilding> buildings)
         {
             int cats = _matBuildings.Length;
             var verts = new List<Vector3>[cats];
@@ -285,17 +271,20 @@ namespace Quahog.SouthCoast.Gis
 
             foreach (var b in buildings)
             {
-                int ci = (int)b.Category;
+                BuildingCategory cat = b.Category;
+                if (cat == BuildingCategory.Default && IsHeroName(b.Name))
+                    cat = BuildingCategory.Civic;
+                int ci = (int)cat;
                 if (ci < 0 || ci >= cats) ci = 0;
 
-                var ring = new List<Vector3>(b.Ring.Count);
-                foreach (var ll in b.Ring) ring.Add(Project(ll));
+                var ring = new List<Vector3>(b.Footprint.Count);
+                foreach (var p in b.Footprint) ring.Add(Place(p, 0f));
 
                 var holes = new List<List<Vector3>>(b.Holes.Count);
                 foreach (var h in b.Holes)
                 {
                     var hr = new List<Vector3>(h.Count);
-                    foreach (var ll in h) hr.Add(Project(ll));
+                    foreach (var p in h) hr.Add(Place(p, 0f));
                     holes.Add(hr);
                 }
 
@@ -390,7 +379,7 @@ namespace Quahog.SouthCoast.Gis
         // Water
         // -----------------------------------------------------------------
 
-        private void BuildWater(List<AreaFeature> water)
+        private void BuildWater(List<ProjectedRing> water)
         {
             if (water.Count == 0) return;
             var verts = new List<Vector3>();
@@ -399,8 +388,8 @@ namespace Quahog.SouthCoast.Gis
 
             foreach (var w in water)
             {
-                var ring = new List<Vector3>(w.Ring.Count);
-                foreach (var ll in w.Ring) ring.Add(Project(ll));
+                var ring = new List<Vector3>(w.Outer.Count);
+                foreach (var p in w.Outer) ring.Add(Place(p, 0f));
                 StripClosing(ring);
                 int n = ring.Count;
                 if (n < 3) continue;
@@ -413,7 +402,7 @@ namespace Quahog.SouthCoast.Gis
                 foreach (var h in w.Holes)
                 {
                     var hr = new List<Vector3>(h.Count);
-                    foreach (var ll in h) hr.Add(Project(ll));
+                    foreach (var p in h) hr.Add(Place(p, 0f));
                     StripClosing(hr);
                     if (hr.Count < 3) continue;
                     var h2 = new Vector2[hr.Count];
@@ -456,35 +445,83 @@ namespace Quahog.SouthCoast.Gis
             Commit("Ground", verts, tris, _matGround, collider: true);
         }
 
-        private void ChooseSpawns(List<RoadFeature> roads)
+        private void ChooseSpawns(MapDocument doc)
         {
-            // Default: centre of the world, on the ground.
             Vector3 spawn = new Vector3((_minX + _maxX) * 0.5f, GroundTopY, (_minZ + _maxZ) * 0.5f);
             Vector3 along = Vector3.forward;
+            bool placed = false;
 
-            // Prefer the midpoint of the longest road so the player/car start on tarmac.
-            float bestLen = -1f;
-            foreach (var road in roads)
+            // Prefer the pavement nearest a hero landmark (Seamen's Bethel first).
+            // Those names and positions come from the slice, not from a placed prop.
+            ProjectedLandmark focus = null;
+            foreach (var lm in doc.Landmarks)
             {
-                if (road.Line.Count < 2) continue;
-                var a = Project(road.Line[0]);
-                var b = Project(road.Line[road.Line.Count - 1]);
-                float len = (b - a).sqrMagnitude;
-                if (len > bestLen)
+                if (!lm.Hero) continue;
+                if (lm.Name == "Seamen's Bethel") { focus = lm; break; }
+                if (focus == null) focus = lm;
+            }
+            if (focus != null)
+            {
+                Vector3 target = new Vector3(focus.Pos.East, 0f, focus.Pos.North);
+                float best = float.MaxValue;
+                foreach (var road in doc.Roads)
                 {
-                    bestLen = len;
-                    spawn = (a + b) * 0.5f;
-                    along = (b - a);
-                    along.y = 0f;
-                    if (along.sqrMagnitude < 1e-6f) along = Vector3.forward;
-                    along.Normalize();
+                    if (!StreetRoutes.IsDrivable(road.Highway)) continue;
+                    for (int i = 0; i < road.Points.Count; i++)
+                    {
+                        Vector3 p = new Vector3(road.Points[i].East, 0f, road.Points[i].North);
+                        float d = (p - target).sqrMagnitude;
+                        if (d < best)
+                        {
+                            best = d;
+                            spawn = p;
+                            int j = i + 1 < road.Points.Count ? i + 1 : i - 1;
+                            if (j >= 0)
+                            {
+                                along = new Vector3(road.Points[j].East, 0f, road.Points[j].North) - p;
+                                along.y = 0f;
+                                if (along.sqrMagnitude < 1e-6f) along = Vector3.forward;
+                                else along.Normalize();
+                            }
+                            placed = true;
+                        }
+                    }
+                }
+            }
+
+            if (!placed)
+            {
+                float bestLen = -1f;
+                foreach (var road in doc.Roads)
+                {
+                    if (road.Points.Count < 2) continue;
+                    var a = road.Points[0];
+                    var b = road.Points[road.Points.Count - 1];
+                    float dx = b.East - a.East, dz = b.North - a.North;
+                    float len = dx * dx + dz * dz;
+                    if (len > bestLen)
+                    {
+                        bestLen = len;
+                        spawn = new Vector3((a.East + b.East) * 0.5f, 0f, (a.North + b.North) * 0.5f);
+                        along = new Vector3(dx, 0f, dz);
+                        if (along.sqrMagnitude < 1e-6f) along = Vector3.forward;
+                        else along.Normalize();
+                    }
                 }
             }
 
             PlayerSpawn = new Vector3(spawn.x, GroundTopY + 1f, spawn.z);
-            // Put the car a few metres down the same road from the player.
             Vector3 carPos = spawn + along * 6f;
             VehicleSpawn = new Vector3(carPos.x, GroundTopY + 0.5f, carPos.z);
+        }
+
+        private static bool IsHeroName(string name)
+        {
+            return name == "Seamen's Bethel"
+                || name == "New Bedford Whaling Museum"
+                || name == "Mariner's Home"
+                || name == "Double Bank Building"
+                || name == "Rodman Candleworks";
         }
     }
 }

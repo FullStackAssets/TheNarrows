@@ -41,6 +41,8 @@ namespace Quahog.SouthCoast
             controller.height = 2f;
             controller.radius = 0.4f;
             controller.center = new Vector3(0f, 1f, 0f);
+            controller.stepOffset = 0.35f;
+            controller.slopeLimit = 50f;
 
             var player = go.AddComponent<PlayerCharacter>();
             player.BuildBody();
@@ -101,8 +103,11 @@ namespace Quahog.SouthCoast
                 // Flatten onto the ground plane so looking up/down doesn't scale speed.
                 forward.y = 0f;
                 right.y = 0f;
-                forward.Normalize();
-                right.Normalize();
+                // Looking straight up/down leaves a zero ground vector.
+                if (forward.sqrMagnitude < 1e-6f) forward = Vector3.forward;
+                else forward.Normalize();
+                if (right.sqrMagnitude < 1e-6f) right = Vector3.right;
+                else right.Normalize();
             }
 
             float h = 0f;
@@ -110,8 +115,7 @@ namespace Quahog.SouthCoast
             bool running = false;
             if (_controlEnabled)
             {
-                h = Input.GetAxis("Horizontal");
-                v = Input.GetAxis("Vertical");
+                DriveInput.ReadMove(out h, out v);
                 running = Input.GetKey(KeyCode.LeftShift);
             }
 
@@ -123,7 +127,14 @@ namespace Quahog.SouthCoast
             Vector3 horizontalMove = wish * speed;
 
             // Gravity / ground handling through the CharacterController.
-            if (_controller.isGrounded && _verticalVelocity < 0f)
+            // Space hops while walking. Driving uses Space as the handbrake instead,
+            // and control is disabled for the whole time the player is in the car.
+            bool jump = _controlEnabled && _controller.isGrounded && Input.GetKeyDown(KeyCode.Space);
+            if (jump)
+            {
+                _verticalVelocity = 6.5f;
+            }
+            else if (_controller.isGrounded && _verticalVelocity < 0f)
             {
                 _verticalVelocity = StickToGround;
             }

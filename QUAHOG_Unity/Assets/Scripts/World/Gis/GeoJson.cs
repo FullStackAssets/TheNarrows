@@ -19,6 +19,7 @@ namespace Quahog.SouthCoast.Gis
         public readonly List<LonLat> Line = new List<LonLat>();
         public float Width = 6f;
         public string Name;
+        public string Highway;
     }
 
     /// <summary>Coarse building class, used to vary colour + default height.</summary>
@@ -134,7 +135,7 @@ namespace Quahog.SouthCoast.Gis
                 foreach (var line in Lines(gtype, coords))
                 {
                     if (line.Count < 2) continue;
-                    var r = new RoadFeature { Width = width, Name = GetString(props, "name") };
+                    var r = new RoadFeature { Width = width, Name = GetString(props, "name"), Highway = highway };
                     r.Line.AddRange(line);
                     data.Roads.Add(r);
                 }

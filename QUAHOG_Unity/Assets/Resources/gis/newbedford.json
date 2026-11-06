@@ -1,6 +1,6 @@
 {
   "type": "FeatureCollection",
-  "_comment": "PLACEHOLDER sample inside the New Bedford waterfront bbox (S 41.6330, W -70.9270, N 41.6400, E -70.9180). Replace with a full overpass-turbo export (same GeoJSON format) to render the real district.",
+  "_comment": "Hand-authored fallback grid inside the New Bedford waterfront bbox (S 41.6330, W -70.9270, N 41.6400, E -70.9180). These coordinates are not an Overpass extract. The OSM district the player loads is gis/waterfront.json, clipped from QUAHOG_Web/public/slice-newbedford.json and the building tiles.",
   "features": [
     { "type": "Feature", "properties": { "highway": "primary", "name": "Union St" },
       "geometry": { "type": "LineString", "coordinates": [[-70.9258,41.6372],[-70.9192,41.6372]] } },

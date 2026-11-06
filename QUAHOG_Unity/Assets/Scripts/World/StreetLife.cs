@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Quahog.SouthCoast
@@ -52,18 +53,31 @@ namespace Quahog.SouthCoast
         private Pedestrian[] _peds;
         private CarPatrol[]  _cars;
 
+        // Real OSM centre-lines when the GIS city supplied them. Null keeps the
+        // greybox wander box (z keep-out at the painted waterfront).
+        private IReadOnlyList<TrafficRoute> _routes;
+
         /// <summary>
         /// Build all pedestrians and AI cars under a fresh "StreetLife" root and
         /// return the component. Safe to call once; the integration layer owns the
-        /// returned object's lifetime.
+        /// returned object's lifetime. With no routes, agents use the greybox box.
         /// </summary>
-        public static StreetLife Spawn()
+        public static StreetLife Spawn() => Spawn(null);
+
+        /// <summary>
+        /// Same as <see cref="Spawn()"/>, but pedestrians and patrol cars follow
+        /// <paramref name="routes"/> (Unity x = east, z = north).
+        /// </summary>
+        public static StreetLife Spawn(IReadOnlyList<TrafficRoute> routes)
         {
             var root = new GameObject("StreetLife");
             var life = root.AddComponent<StreetLife>();
+            life._routes = routes;
             life.BuildInternal();
             return life;
         }
+
+        private bool HasRoutes() => _routes != null && _routes.Count > 0;
 
         private void BuildInternal()
         {
@@ -161,6 +175,12 @@ namespace Quahog.SouthCoast
 
         private void BuildPedestrians()
         {
+            if (HasRoutes())
+            {
+                BuildPedestriansOnRoutes();
+                return;
+            }
+
             _peds = new Pedestrian[PedestrianCount];
 
             for (int i = 0; i < PedestrianCount; i++)
@@ -207,8 +227,52 @@ namespace Quahog.SouthCoast
         // AI cars
         // -----------------------------------------------------------------
 
+        private void BuildPedestriansOnRoutes()
+        {
+            _peds = new Pedestrian[PedestrianCount];
+            for (int i = 0; i < PedestrianCount; i++)
+            {
+                Material mat = _pedMats[i % _pedMats.Length];
+                float scaleFactor = PedHeight / 2f;
+                float centreY = GroundTopY + PedHeight * 0.5f;
+
+                int routeIndex = i % _routes.Count;
+                TrafficRoute route = _routes[routeIndex];
+                float distance = route.Length * ((i + 0.5f) / PedestrianCount);
+                if (distance > route.Length) distance = route.Length * 0.5f;
+                route.Sample(distance, true, out Vector3 pos, out Vector3 dir);
+                float lateral = route.Width * 0.5f + 0.6f;
+                if ((i & 1) == 1) lateral = -lateral;
+                Vector3 side = new Vector3(-dir.z, 0f, dir.x);
+                pos += side * lateral;
+                pos.y = centreY;
+
+                var go = SpawnPrimitive(PrimitiveType.Capsule, "Pedestrian",
+                    transform, pos, new Vector3(scaleFactor, scaleFactor, scaleFactor), mat);
+
+                _peds[i] = new Pedestrian
+                {
+                    Tr = go.transform,
+                    CentreY = centreY,
+                    Destination = pos,
+                    RepathTimer = PedRepathTime,
+                    OnRoute = true,
+                    RouteIndex = routeIndex,
+                    Distance = distance,
+                    Forward = true,
+                    Side = lateral
+                };
+            }
+        }
+
         private void BuildCars()
         {
+            if (HasRoutes())
+            {
+                BuildCarsOnRoutes();
+                return;
+            }
+
             // Three decorative patrol cars: two on the east-west lane (z = 0), one on
             // the north-south lane (x = 0). They reverse at the lane ends.
             //   forward = unit travel direction at spawn
@@ -268,6 +332,39 @@ namespace Quahog.SouthCoast
             return carRoot.transform;
         }
 
+        private void BuildCarsOnRoutes()
+        {
+            int count = _routes.Count < 6 ? _routes.Count : 6;
+            _cars = new CarPatrol[count];
+            for (int i = 0; i < count; i++)
+            {
+                int routeIndex = (i * 3) % _routes.Count;
+                TrafficRoute route = _routes[routeIndex];
+                float distance = route.Length * ((i + 1f) / (count + 1f));
+                route.Sample(distance, true, out Vector3 pos, out Vector3 dir);
+                pos.y = CarRideHeight;
+
+                Material bodyMat = _carMats[i % _carMats.Length];
+                Transform body = BuildCarBody(bodyMat);
+                body.localPosition = pos;
+                if (dir.sqrMagnitude > 0.0001f)
+                    body.localRotation = Quaternion.LookRotation(dir, Vector3.up);
+
+                _cars[i] = new CarPatrol
+                {
+                    Tr = body,
+                    Direction = dir,
+                    PatrolAxis = Axis.X,
+                    Min = 0f,
+                    Max = route.Length,
+                    OnRoute = true,
+                    RouteIndex = routeIndex,
+                    Distance = distance,
+                    Forward = true
+                };
+            }
+        }
+
         // -----------------------------------------------------------------
         // Per-frame movement (kinematic — transform only)
         // -----------------------------------------------------------------
@@ -287,6 +384,13 @@ namespace Quahog.SouthCoast
             {
                 Pedestrian p = _peds[i];
                 if (p.Tr == null) continue; // robust to externally destroyed children
+
+                if (p.OnRoute)
+                {
+                    UpdatePedestrianOnRoute(ref p, dt);
+                    _peds[i] = p;
+                    continue;
+                }
 
                 Vector3 pos = p.Tr.localPosition;
 
@@ -328,6 +432,27 @@ namespace Quahog.SouthCoast
             }
         }
 
+        private void UpdatePedestrianOnRoute(ref Pedestrian p, float dt)
+        {
+            if (_routes == null || p.RouteIndex < 0 || p.RouteIndex >= _routes.Count)
+                return;
+            TrafficRoute route = _routes[p.RouteIndex];
+            StreetRoutes.Advance(p.Distance, PedSpeed * dt, route.Length, false, p.Forward,
+                out float next, out bool forward);
+            p.Distance = next;
+            p.Forward = forward;
+            route.Sample(p.Distance, p.Forward, out Vector3 pos, out Vector3 dir);
+            Vector3 side = new Vector3(-dir.z, 0f, dir.x);
+            pos += side * p.Side;
+            pos.y = p.CentreY;
+            p.Tr.localPosition = pos;
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                Quaternion want = Quaternion.LookRotation(dir, Vector3.up);
+                p.Tr.localRotation = Quaternion.Slerp(p.Tr.localRotation, want, PedTurnSpeed * dt);
+            }
+        }
+
         private void UpdateCars(float dt)
         {
             if (_cars == null) return;
@@ -336,6 +461,13 @@ namespace Quahog.SouthCoast
             {
                 CarPatrol c = _cars[i];
                 if (c.Tr == null) continue;
+
+                if (c.OnRoute)
+                {
+                    UpdateCarOnRoute(ref c, dt);
+                    _cars[i] = c;
+                    continue;
+                }
 
                 Vector3 pos = c.Tr.localPosition;
 
@@ -372,6 +504,26 @@ namespace Quahog.SouthCoast
             }
         }
 
+        private void UpdateCarOnRoute(ref CarPatrol c, float dt)
+        {
+            if (_routes == null || c.RouteIndex < 0 || c.RouteIndex >= _routes.Count)
+                return;
+            TrafficRoute route = _routes[c.RouteIndex];
+            StreetRoutes.Advance(c.Distance, CarSpeed * dt, route.Length, route.Oneway, c.Forward,
+                out float next, out bool forward);
+            c.Distance = next;
+            c.Forward = forward;
+            route.Sample(c.Distance, c.Forward, out Vector3 pos, out Vector3 dir);
+            pos.y = CarRideHeight;
+            c.Tr.localPosition = pos;
+            c.Direction = dir;
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                Quaternion want = Quaternion.LookRotation(dir, Vector3.up);
+                c.Tr.localRotation = Quaternion.Slerp(c.Tr.localRotation, want, CarTurnSpeed * dt);
+            }
+        }
+
         // -----------------------------------------------------------------
         // Plain data holders
         // -----------------------------------------------------------------
@@ -386,6 +538,11 @@ namespace Quahog.SouthCoast
             public float     CentreY;     // y of the capsule centre (feet on ground)
             public Vector3   Destination; // current wander goal (on the ground plane)
             public float     RepathTimer; // seconds until a forced re-target
+            public bool      OnRoute;
+            public int       RouteIndex;
+            public float     Distance;
+            public bool      Forward;
+            public float     Side;
         }
 
         /// <summary>Mutable runtime state for one patrolling AI car.</summary>
@@ -396,6 +553,10 @@ namespace Quahog.SouthCoast
             public Axis      PatrolAxis; // which axis Min/Max apply to
             public float     Min;        // signed lane-end (low)
             public float     Max;        // signed lane-end (high)
+            public bool      OnRoute;
+            public int       RouteIndex;
+            public float     Distance;
+            public bool      Forward;
         }
 
         /// <summary>Immutable description used to lay out one car at build time.</summary>

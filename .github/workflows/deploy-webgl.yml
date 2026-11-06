@@ -1,23 +1,18 @@
 name: Build & Deploy WebGL
 
-# Builds the Unity WebGL player on GitHub's runners and publishes it to the
-# gh-pages branch, which GitHub Pages serves at:
-#   https://fullstackassets.com/quahog/
+# Manual Unity WebGL build. This workflow does not run on push.
+# A person dispatches it from the Actions tab after the license secrets exist.
+# See QUAHOG_Unity/WEBGL.md. Dispatching it builds on GitHub-hosted runners and
+# publishes the player to the gh-pages branch.
 #
-# Requires repo secrets (see WEBGL_CI_SETUP.md):
-#   UNITY_EMAIL, UNITY_PASSWORD, and ONE of:
+# Requires repo secrets:
+#   UNITY_EMAIL, UNITY_PASSWORD, and exactly one of:
 #     UNITY_LICENSE  — contents of your .ulf file (personal/free license)
 #     UNITY_SERIAL   — your Pro/Plus serial number
+# Setting both makes game-ci follow the serial. A bad serial fails with
+# licensing code 20110 even when the .ulf would have worked.
 
 on:
-  # DORMANT — using UBA to build + manual publish. The GameCI path is parked
-  # (Unity 6 Personal license activation on CI is unresolved). Re-enable by
-  # uncommenting the push trigger below.
-  # push:
-  #   branches: [ main, claude/extract-into-repo-b738b0 ]
-  #   paths:
-  #     - 'QUAHOG_Unity/**'
-  #     - '.github/workflows/deploy-webgl.yml'
   workflow_dispatch:
 
 concurrency:
@@ -45,6 +40,30 @@ jobs:
             Library-WebGL-
             Library-
 
+      - name: Require Unity license secrets
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        run: |
+          if [ -z "${UNITY_EMAIL}" ] || [ -z "${UNITY_PASSWORD}" ]; then
+            echo "UNITY_EMAIL and UNITY_PASSWORD must be set. See QUAHOG_Unity/WEBGL.md"
+            exit 1
+          fi
+          if [ -n "${UNITY_LICENSE}" ] && [ -n "${UNITY_SERIAL}" ]; then
+            echo "Both UNITY_LICENSE and UNITY_SERIAL are set."
+            echo "game-ci uses the serial whenever UNITY_SERIAL is non-empty."
+            echo "A bad serial fails with licensing code 20110."
+            echo "Personal license: delete the UNITY_SERIAL secret and keep UNITY_LICENSE as the full .ulf."
+            exit 1
+          fi
+          if [ -z "${UNITY_LICENSE}" ] && [ -z "${UNITY_SERIAL}" ]; then
+            echo "Set UNITY_LICENSE (personal .ulf contents) or UNITY_SERIAL (Pro/Plus)."
+            echo "See QUAHOG_Unity/WEBGL.md"
+            exit 1
+          fi
+
       - name: Build WebGL
         uses: game-ci/unity-builder@v4
         env:
@@ -55,6 +74,7 @@ jobs:
         with:
           projectPath: QUAHOG_Unity
           targetPlatform: WebGL
+          unityVersion: 6000.0.23f1
 
       - name: Locate built player
         id: loc

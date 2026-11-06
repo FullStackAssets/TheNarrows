@@ -28,12 +28,14 @@ QUAHOG_Unity/
 └── .gitignore                     # ignores Library/ Temp/ Obj/ Logs/ Build/ *.csproj *.sln
 ```
 
-## Render pipeline — built-in now, URP later (#7)
+## Render pipeline — built-in until URP is enabled in an editor
 
-The first build ships on the **built-in** render pipeline. URP is in the manifest
-(package present) but **not assigned** — the proof-of-life HUD is uGUI screen-overlay,
-which renders regardless of pipeline, and there's no 3D content yet to go "pink". This
-keeps the first UBA run low-risk.
+The committed project does not assign a render pipeline asset (Graphics and
+Quality settings are generated on first import). URP is in the manifest but
+**not assigned**. The playable slice — GIS city, on-foot player, car, street
+life — asks for `Universal Render Pipeline/Lit` and falls back to `Standard`,
+then `Sprites/Default`, so a built-in player still has materials. The HUD is
+uGUI screen-overlay and does not depend on the pipeline.
 
 `Assets/Editor/QuahogBootstrap.cs` is an **editor-only** script (`#if UNITY_EDITOR`,
 under `Assets/Editor/`, so it never enters a player build). On load and as an
@@ -79,8 +81,18 @@ A green build logs:
 
 ## Scope note
 
-This is a **4-script proof-of-life**, not the full game. The actual QUAHOG systems live
-as **GDScript** in `QUAHOG_Godot/`; only a handful of C# files were ever provided. Porting
-the real systems back to C# (the "144 .cs files, subfoldered by system") is a separate,
-large effort. SQLite is **not** referenced by any committed script (the empire DB is a stub),
-so no SQLite package is needed yet.
+This track is in active development beside the other engines. The playable
+slice is C# under `Assets/Scripts/` (player, car, GIS city, street life, HUD,
+managers). The district mesh comes from the shared OSM clip described in
+[`OSM_CONTRACT.md`](OSM_CONTRACT.md).
+
+Opening the project, pressing Play, and producing a WebGL or device build all
+require a Unity 6000.0.23f1 editor (or a dispatched GameCI run). Those were not
+executed in the sandbox that added the slice. The headless gate is
+[`../tools/csharp/`](../tools/csharp/README.md): `compile-check.sh` and
+`run-tests.sh`. A green result type-checks the scripts and checks map parsing,
+triangulation, and the clip. It does not simulate physics, rendering, or input.
+
+SQLite is **not** referenced by any committed gameplay script (the empire DB is
+a stub), so no SQLite package is needed yet. The files under `external/` are
+unused by the slice.

@@ -21,11 +21,17 @@ namespace Quahog.SouthCoast
         private const float BrakeForce     = 24f;    // active braking force scale
         private const float TurnSpeed      = 90f;    // degrees/sec at full steer
         private const float GripFactor     = 6f;     // lateral grip (kills sliding)
-        private const float StopThreshold  = 0.5f;   // speed below which we don't steer
 
         private Rigidbody _rb;
         private Transform _exitPoint;
         private bool _driven;
+        private readonly System.Collections.Generic.List<Transform> _wheels =
+            new System.Collections.Generic.List<Transform>();
+        private float _wheelSpin;
+        private float _speedMps;
+
+        /// <summary>Signed forward speed in metres per second (positive = nose-first).</summary>
+        public float SpeedMps { get { return _speedMps; } }
 
         /// <summary>True while the player is actively driving this car.</summary>
         public bool IsOccupied { get { return _driven; } }
@@ -119,6 +125,7 @@ namespace Quahog.SouthCoast
             wheel.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
             // Cylinder default: diameter 1 (X/Z), height 2 (Y). Scale to radius/width.
             wheel.transform.localScale = new Vector3(radius * 2f, width * 0.5f, radius * 2f);
+            _wheels.Add(wheel.transform);
         }
 
         /// <summary>
@@ -141,22 +148,46 @@ namespace Quahog.SouthCoast
             // Inactive when not driven: read no input and let damping settle the car.
             if (!_driven || _rb == null) return;
 
-            float throttle = Input.GetAxis("Vertical");   // -1 (reverse/brake) .. 1 (forward)
-            float steer    = Input.GetAxis("Horizontal");  // -1 (left) .. 1 (right)
+            DriveInput.ReadMove(out float steer, out float throttle);
+            bool handbrake = Input.GetKey(KeyCode.Space);
 
             // Signed forward speed along the car's nose.
             Vector3 velocity = _rb.linearVelocity;
             float forwardSpeed = Vector3.Dot(velocity, transform.forward);
+            _speedMps = forwardSpeed;
+            SpinWheels(forwardSpeed);
 
-            ApplyDrive(throttle, forwardSpeed);
+            ApplyDrive(throttle, forwardSpeed, handbrake);
             ApplySteering(steer, forwardSpeed);
-            ApplyGrip(velocity);
+            ApplyGrip(velocity, handbrake);
             ClampSpeed();
         }
 
-        /// <summary>Accelerate, reverse, or brake along the car's forward axis.</summary>
-        private void ApplyDrive(float throttle, float forwardSpeed)
+        /// <summary>
+        /// Spin the visual cylinders about their axle. The 90° Z rotation lays the
+        /// cylinder's Y axis across the car, so roll is an extra Y rotation.
+        /// </summary>
+        private void SpinWheels(float forwardSpeed)
         {
+            const float radius = 0.5f;
+            _wheelSpin += (forwardSpeed / radius) * Mathf.Rad2Deg * Time.fixedDeltaTime;
+            Quaternion spin = Quaternion.Euler(0f, _wheelSpin, 90f);
+            for (int i = 0; i < _wheels.Count; i++)
+            {
+                if (_wheels[i] != null) _wheels[i].localRotation = spin;
+            }
+        }
+
+        /// <summary>Accelerate, reverse, or brake along the car's forward axis.</summary>
+        private void ApplyDrive(float throttle, float forwardSpeed, bool handbrake)
+        {
+            if (handbrake && Mathf.Abs(forwardSpeed) > 0.2f)
+            {
+                float sign = Mathf.Sign(forwardSpeed);
+                _rb.AddForce(transform.forward * (-sign * BrakeForce * Time.fixedDeltaTime),
+                    ForceMode.VelocityChange);
+            }
+
             if (throttle > 0.01f)
             {
                 // Pressing forward: accelerate (or brake if we were reversing).
@@ -175,17 +206,17 @@ namespace Quahog.SouthCoast
         }
 
         /// <summary>
-        /// Steer by rotating the body. Steering scales with forward speed (so the
-        /// car turns more sharply the faster it goes, up to a cap) and reverses when
-        /// driving backwards, like a real car. No steering while nearly stopped.
+        /// Steer by rotating the body. Steering scales with forward speed and
+        /// reverses when driving backwards. Below a crawl there is nothing to yaw.
         /// </summary>
         private void ApplySteering(float steer, float forwardSpeed)
         {
-            if (Mathf.Abs(forwardSpeed) < StopThreshold || Mathf.Abs(steer) < 0.01f)
+            if (Mathf.Abs(forwardSpeed) < 0.15f || Mathf.Abs(steer) < 0.01f)
                 return;
 
-            // 0..1 factor that grows with speed but is capped at the top end.
-            float speedFactor = Mathf.Clamp01(Mathf.Abs(forwardSpeed) / MaxSpeed);
+            // Keep a floor so the car can turn as soon as it is rolling.
+            // Still scales up toward top speed.
+            float speedFactor = Mathf.Clamp(Mathf.Abs(forwardSpeed) / MaxSpeed, 0.35f, 1f);
             float direction   = Mathf.Sign(forwardSpeed); // flip steering in reverse
             float yaw = steer * direction * TurnSpeed * speedFactor * Time.fixedDeltaTime;
 
@@ -197,11 +228,12 @@ namespace Quahog.SouthCoast
         /// Apply mild lateral grip: bleed off sideways velocity so the car doesn't
         /// slide forever, while leaving forward/back motion untouched.
         /// </summary>
-        private void ApplyGrip(Vector3 velocity)
+        private void ApplyGrip(Vector3 velocity, bool handbrake)
         {
+            float grip = handbrake ? GripFactor * 0.25f : GripFactor;
             float lateralSpeed = Vector3.Dot(velocity, transform.right);
             Vector3 lateralCorrection = -transform.right * lateralSpeed *
-                Mathf.Clamp01(GripFactor * Time.fixedDeltaTime);
+                Mathf.Clamp01(grip * Time.fixedDeltaTime);
             _rb.AddForce(lateralCorrection, ForceMode.VelocityChange);
         }
 

@@ -23,7 +23,8 @@ ever reaches a real Unity build.
 # Type-check all gameplay scripts (installs dotnet on first run):
 tools/csharp/compile-check.sh
 
-# Run the logic test harness (GeoJSON / triangulation / GIS build):
+# Run the logic test harness (GeoJSON / triangulation / GIS build /
+# shared slice + southcoast-roads contracts / playable-clip fidelity):
 tools/csharp/run-tests.sh
 ```
 Both scripts call `setup.sh`, which installs `dotnet-sdk-8.0` if missing. The

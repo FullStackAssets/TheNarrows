@@ -7,13 +7,13 @@ namespace Quahog.SouthCoast
     /// car and press <c>F</c> to get in; press <c>F</c> again to get out. Entering
     /// disables and hides the avatar, hands driving control to the car, and points
     /// the camera at it; exiting reverses all of that and drops the player at the
-    /// car's exit point. Kept deliberately small — it owns the cross-cutting handoff
-    /// so the player, camera, and car components stay independent of one another.
+    /// car's exit point. Enter and exit are E (same key as the web slice) or F.
+    /// Kept deliberately small — it owns the cross-cutting handoff so the player,
+    /// camera, and car components stay independent of one another.
     /// </summary>
     public sealed class PlayerVehicleInteractor : MonoBehaviour
     {
         private const float EnterRange = 3.5f;        // metres from the car to allow entry
-        private const KeyCode ToggleKey = KeyCode.F;
 
         private PlayerCharacter _player;
         private ThirdPersonCamera _camera;
@@ -32,7 +32,7 @@ namespace Quahog.SouthCoast
         {
             if (_player == null || _car == null) return;
 
-            if (!Input.GetKeyDown(ToggleKey)) return;
+            if (!Input.GetKeyDown(KeyCode.E) && !Input.GetKeyDown(KeyCode.F)) return;
 
             if (_driving) ExitCar();
             else TryEnterCar();
@@ -74,12 +74,12 @@ namespace Quahog.SouthCoast
             string hint = null;
             if (_driving)
             {
-                hint = "Press F to exit the car";
+                hint = "Press E or F to exit the car";
             }
             else if (_player.gameObject.activeSelf &&
                      Vector3.Distance(_player.transform.position, _car.transform.position) <= EnterRange)
             {
-                hint = "Press F to enter the car";
+                hint = "Press E or F to enter the car";
             }
 
             if (hint != null)
