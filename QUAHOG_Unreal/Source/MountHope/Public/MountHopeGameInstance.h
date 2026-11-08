@@ -4,7 +4,7 @@
 #include "Engine/GameInstance.h"
 #include "MountHopeGameInstance.generated.h"
 
-UCLASS()
+UCLASS(Config=Game)
 class MOUNTHOPE_API UMountHopeGameInstance : public UGameInstance
 {
     GENERATED_BODY()
@@ -12,15 +12,17 @@ class MOUNTHOPE_API UMountHopeGameInstance : public UGameInstance
 public:
     virtual void Init() override;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
     FString SlicePath = TEXT("../QUAHOG_Web/public/slice-newbedford.json");
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
     FString MissionPath = TEXT("Data/Missions/vertical_slice.json");
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
     FString EconomyPath = TEXT("Data/Economy/businesses.json");
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
-    FString SaveSlotName = TEXT("MountHopeSlot");
+    // Distinct from the MountHope_Unreal slot so the two tracks do not share a
+    // save file. Override in Config/DefaultGame.ini.
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MountHope|Boot")
+    FString SaveSlotName = TEXT("QuahogUnrealSlot");
 };

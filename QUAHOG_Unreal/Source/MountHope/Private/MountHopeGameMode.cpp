@@ -4,6 +4,7 @@
 #include "MHMissionSubsystem.h"
 #include "MHMissionTriggerActor.h"
 #include "MountHopeCharacter.h"
+#include "MountHopeGameInstance.h"
 
 AMountHopeGameMode::AMountHopeGameMode()
 {
@@ -83,9 +84,22 @@ bool AMountHopeGameMode::CompleteCurrentObjective(bool bPlayerInVehicle)
         UE_LOG(LogTemp, Log, TEXT("MountHope: Next objective -> %s"), *NextStep.Text);
     }
 
-    GameStateSubsystem->SaveToSlot();
+    GameStateSubsystem->SaveToSlot(ResolveSaveSlotName());
     RefreshObjectiveTrigger();
     return bAdvanced;
+}
+
+FString AMountHopeGameMode::ResolveSaveSlotName() const
+{
+    if (const UMountHopeGameInstance* GameInstance = Cast<UMountHopeGameInstance>(GetGameInstance()))
+    {
+        if (!GameInstance->SaveSlotName.IsEmpty())
+        {
+            return GameInstance->SaveSlotName;
+        }
+    }
+
+    return TEXT("QuahogUnrealSlot");
 }
 
 bool AMountHopeGameMode::TryCompleteVehicleObjective(bool bPlayerInVehicle)

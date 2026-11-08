@@ -23,6 +23,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|World")
     TArray<FMHLandmarkRecord> Landmarks;
 
+    // Slice water rings. Empty when the file has no `water` array. Not part of
+    // the MountHope_Unreal subsystem surface.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|World")
+    TArray<FMHWaterPolygon> Water;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MountHope|World")
     FVector2D OriginLatLon = FVector2D::ZeroVector;
 
