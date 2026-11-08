@@ -1,0 +1,9 @@
+# Godot 4 editor cache. Regenerated on import.
+.godot/
+
+# Local export output. This track has no committed presets or templates.
+/build/
+/export/
+*.pck
+*.apk
+*.aab

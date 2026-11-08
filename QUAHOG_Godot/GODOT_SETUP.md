@@ -1,8 +1,12 @@
 # Project QUAHOG — Godot 4 Setup Guide
 
+**Status:** active GDScript track for The Narrows. **Not a production build.**
+`LEGACY.md` in this folder is updated by the MountHope agent; it may still say legacy until that lands. Track status for this directory is [`README.md`](README.md).
+
 **Engine:** Godot 4.2+ (Forward+ renderer)
 **Language:** GDScript
-**Original codebase:** Unity C# (93 files, ~13K lines) → **48 GDScript files, ~6,100 lines**
+**Era:** 2026. Coastal neon is a lighting mood, not a 1986 period lock.
+**Export and map contract:** [`EXPORT.md`](EXPORT.md), [`OSM_CONTRACT.md`](OSM_CONTRACT.md)
 
 ---
 
@@ -25,18 +29,23 @@ world **in code** on `_ready()`:
 - a `WorldEnvironment` (procedural sky + filmic tonemap), wired into `WeatherController`
 - a directional **sun** with shadows
 - an **infinite ground collider** + a large ground plane (so you can walk)
-- the **real South Coast road mesh** baked from `data/southcoast-roads.json` via `MapMeshBaker`
-- a spawned **PlayerController** (capsule + first-person camera) dropped onto a New Bedford street
+- the **real South Coast road mesh** baked from `data/southcoast-roads.json` via `MapMeshBaker` (byte copy of the shared bake; axis `z = north`)
+- a spawned **PlayerController** (capsule + first-person camera) on the first **named** road in that file
+- weather particles, highway neon, a street-name banner, and one contact mission (`StreetLoop.gd`)
 
-Hit **F5** (or the Play button). In the **Output** panel you should see the autoload
-boot lines plus:
+Hit **F5** (or the Play button). In the **Output** panel the scripts print autoload
+boot lines plus a map bake, a warning that road-graph `city` is null, and:
 ```
-[MapMeshBaker] baked 12257 roads (… vertices)
 [GameWorld] Ready — player spawned at (…)
 ```
+A headless Godot 4.2.2 dummy-renderer boot printed that line (see [`EXPORT.md`](EXPORT.md)).
+A windowed editor pass and a device launch were not done.
+
 The mouse is captured — **WASD** to walk, **mouse** to look, **Shift** to sprint,
-**Space** to jump, **Q** to take cover, **Esc** to release the mouse. The road network
-fades off toward the horizon under the sun.
+**Space** to jump, **Q** to take cover, **E** on the contact to finish the opener,
+**Esc** to pause. The banner is the OSM street name (and `highway` if the road is
+unnamed). It does not invent a municipality. Dusk is the start hour so the neon
+read is visible; the sun curve is art direction, not a solar model.
 
 > **Note on the old bootstrap:** `scenes/bootstrap/Bootstrap.tscn` (singleton-validation
 > + prologue fog) is still in the repo as the headless boot harness, but it is no longer
@@ -82,7 +91,13 @@ QUAHOG_Godot/
 │   ├── world/
 │   │   ├── WeatherVisualEffects.gd ← GPUParticles3D rain/snow, lightning OmniLight3D
 │   │   ├── FogController.gd        ← Tween-based fog density blending
-│   │   ├── CoastalNeonPostProcess.gd ← Per-district ambient color grading
+│   │   ├── CoastalNeonPostProcess.gd ← Parody-district grades, plus a CLEAR-weather highway tint
+│   │   ├── HighwayNeon.gd          ← OSM highway-tag neon colors (not municipalities)
+│   │   ├── OsmMapContract.gd       ← Road-graph / slice adapter
+│   │   ├── MapMeshBaker.gd         ← Road ribbons from the shared bake
+│   │   ├── GameWorld.gd            ← In-code slice bootstrap
+│   │   ├── StreetLoop.gd           ← Walk, banner, weather/neon, one contact
+│   │   ├── StreetContact.gd        ← Interactable prop on the spawn road
 │   │   └── LighthouseBeam.gd       ← Rotating beacon + player detection raycast
 │   │
 │   ├── systems/
@@ -198,5 +213,5 @@ Run these in order — each one validates a dependency layer:
 
 ---
 
-*Project QUAHOG — Godot 4 Port*
-*48 GDScript files · ~6,100 lines · 13 autoloads · 22 missions · 4 districts*
+*Project QUAHOG — Godot 4 track, active and not production-ready.*
+*Contract checks: `python3 -m unittest QUAHOG_Godot.tests.test_osm_contract` from the repo root.*

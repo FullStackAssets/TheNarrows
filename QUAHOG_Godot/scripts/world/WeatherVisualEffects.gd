@@ -5,7 +5,7 @@
 ## Attach to a Node that lives inside the active level scene.
 ## Converted from WeatherVisualEffects.cs (Unity C#) for Project QUAHOG / Godot 4
 
-extends Node
+extends Node3D
 
 # ---------------------------------------------------------------------------
 # Exports — Scene references
@@ -99,6 +99,27 @@ func trigger_lightning() -> void:
 		_lightning_tween.kill()
 
 	_lightning_flash_async()
+
+## Apply a WeatherController state name to the particle nodes.
+## Snow uses the existing set_intensity() path. Missing nodes are skipped
+## so a half-built scene does not spam warnings every weather tick.
+func apply_state_name(state: String) -> void:
+	var rain := 0.0
+	var snow := 0.0
+	match state:
+		"COASTAL_RAIN":
+			rain = 0.7
+		"NOREASTER":
+			rain = 1.0
+			snow = 0.85
+		_:
+			pass
+	if rain_particles != null:
+		set_rain_intensity(rain)
+	if snow_particles != null:
+		set_intensity(snow)
+	if wet_road_material != null:
+		set_wet_surfaces(rain > 0.0 or snow > 0.0)
 
 ## Apply or remove wet-surface wetness via shader parameter.
 ## wet=true  → wetness 0.85

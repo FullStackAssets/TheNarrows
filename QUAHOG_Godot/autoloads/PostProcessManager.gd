@@ -160,6 +160,28 @@ func set_district(district: int) -> void:
 func get_district() -> int:
 	return _current_district
 
+## Saturation mood from an OSM highway tag.
+## Does not select a parody district and does not invent a municipality.
+func apply_osm_highway_grade(highway: String) -> void:
+	if environment == null:
+		return
+	environment.adjustment_enabled = true
+	var saturation := 1.0
+	match highway:
+		"motorway", "trunk", "motorway_link", "trunk_link":
+			saturation = 1.15
+		"primary", "primary_link", "secondary", "secondary_link", "tertiary", "tertiary_link":
+			saturation = 1.08
+		"residential", "living_street", "unclassified":
+			saturation = 1.05
+		"service":
+			saturation = 0.95
+		"footway", "path", "steps", "cycleway", "track", "pedestrian":
+			saturation = 0.90
+		_:
+			saturation = 1.0
+	environment.adjustment_saturation = saturation
+
 ## Returns the display name of a district enum value.
 func get_district_name(district: int) -> String:
 	match district:
