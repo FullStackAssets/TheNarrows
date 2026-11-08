@@ -94,7 +94,73 @@ bool UMHCollectibleSubsystem::LoadCollectiblesFromJson(const FString& RelativeOr
         }
     }
 
-    UE_LOG(LogTemp, Log, TEXT("MountHope: Loaded %d collectibles"), Collectibles.Num());
+    const TArray<TSharedPtr<FJsonValue>>* SetsArray = nullptr;
+    if (RootObject->TryGetArrayField(TEXT("sets"), SetsArray) && SetsArray)
+    {
+        CollectibleSets.Reset();
+        TSet<FName> SeenSetIds;
+        for (const TSharedPtr<FJsonValue>& Value : *SetsArray)
+        {
+            const TSharedPtr<FJsonObject> Object = Value->AsObject();
+            if (!Object.IsValid())
+            {
+                continue;
+            }
+
+            FString SetIdString;
+            FString SetName;
+            if (!Object->TryGetStringField(TEXT("id"), SetIdString) || SetIdString.IsEmpty())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping collectible set with missing id"));
+                continue;
+            }
+            if (!Object->TryGetStringField(TEXT("name"), SetName) || SetName.IsEmpty())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping collectible set '%s' with missing name"), *SetIdString);
+                continue;
+            }
+
+            const FName SetId(*SetIdString);
+            if (SeenSetIds.Contains(SetId))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping duplicate collectible set '%s'"), *SetIdString);
+                continue;
+            }
+
+            FMHCollectibleSet Set;
+            Set.Id = SetId;
+            Set.DisplayName = SetName;
+            int32 Bonus = Set.BonusCash;
+            if (Object->TryGetNumberField(TEXT("bonusCash"), Bonus) && Bonus >= 0)
+            {
+                Set.BonusCash = Bonus;
+            }
+
+            const TArray<TSharedPtr<FJsonValue>>* Members = nullptr;
+            if (Object->TryGetArrayField(TEXT("members"), Members) && Members)
+            {
+                for (const TSharedPtr<FJsonValue>& MemberValue : *Members)
+                {
+                    const FString MemberId = MemberValue->AsString();
+                    if (!MemberId.IsEmpty())
+                    {
+                        Set.MemberIds.Add(FName(*MemberId));
+                    }
+                }
+            }
+
+            if (Set.MemberIds.Num() == 0)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping collectible set '%s' with no members"), *SetIdString);
+                continue;
+            }
+
+            SeenSetIds.Add(SetId);
+            CollectibleSets.Add(MoveTemp(Set));
+        }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("MountHope: Loaded %d collectibles (%d sets)"), Collectibles.Num(), CollectibleSets.Num());
     return Collectibles.Num() > 0;
 }
 
@@ -112,8 +178,70 @@ bool UMHCollectibleSubsystem::CollectItem(FName ItemId)
     }
 
     CollectedIds.Add(ItemId);
+    EvaluateSetBonuses();
     OnCollectibleFound.Broadcast(ItemId, GetCollectedCount(), GetTotalCount());
     return true;
+}
+
+bool UMHCollectibleSubsystem::GetSetProgress(FName SetId, int32& OutFound, int32& OutTotal) const
+{
+    OutFound = 0;
+    OutTotal = 0;
+    for (const FMHCollectibleSet& Set : CollectibleSets)
+    {
+        if (Set.Id != SetId)
+        {
+            continue;
+        }
+
+        OutTotal = Set.MemberIds.Num();
+        for (const FName& MemberId : Set.MemberIds)
+        {
+            if (CollectedIds.Contains(MemberId))
+            {
+                ++OutFound;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+int32 UMHCollectibleSubsystem::ConsumePendingSetBonus(TArray<FName>& OutCompletedSetIds)
+{
+    OutCompletedSetIds = PendingCompletedSetIds;
+    const int32 Bonus = PendingSetBonus;
+    PendingSetBonus = 0;
+    PendingCompletedSetIds.Reset();
+    return Bonus;
+}
+
+void UMHCollectibleSubsystem::EvaluateSetBonuses()
+{
+    for (FMHCollectibleSet& Set : CollectibleSets)
+    {
+        if (Set.bBonusAwarded || Set.BonusCash <= 0 || Set.MemberIds.Num() == 0)
+        {
+            continue;
+        }
+
+        int32 Found = 0;
+        for (const FName& MemberId : Set.MemberIds)
+        {
+            if (CollectedIds.Contains(MemberId))
+            {
+                ++Found;
+            }
+        }
+
+        if (Found == Set.MemberIds.Num())
+        {
+            Set.bBonusAwarded = true;
+            PendingSetBonus += Set.BonusCash;
+            PendingCompletedSetIds.Add(Set.Id);
+        }
+    }
 }
 
 bool UMHCollectibleSubsystem::IsCollected(FName ItemId) const

@@ -5,9 +5,34 @@
       "speaker": "Deacon Mealy",
       "prompt": "Talk to Deacon Mealy",
       "lines": [
-        "Another stray off the boat? The Bethel sees everything.",
-        "Package is at the pier. The contact owes the Republic money — collect or crack skulls, your call.",
-        "Take a car if you have to. Heat stays low if you are quick."
+        {
+          "speaker": "Deacon Mealy",
+          "text": "Another stray off the boat? The Bethel sees everything."
+        },
+        {
+          "speaker": "Deacon Mealy",
+          "text": "Package is at the pier. The contact owes the Republic money. How do you want this done?",
+          "choices": [
+            {
+              "text": "I'll collect it quiet.",
+              "nextLine": 2
+            },
+            {
+              "text": "Crack skulls if they stall.",
+              "nextLine": 3
+            }
+          ]
+        },
+        {
+          "speaker": "Deacon Mealy",
+          "text": "Quiet money. Heat stays low if you are quick. The pew has a scrimshaw tooth if you need a stake.",
+          "endsConversation": true
+        },
+        {
+          "speaker": "Deacon Mealy",
+          "text": "Loud is a choice. Take a car. Do not make me read about you. And pocket the tooth in the pew — you'll want the cash.",
+          "endsConversation": true
+        }
       ],
       "onComplete": {
         "completeObjective": true,
@@ -32,8 +57,34 @@
       "speaker": "Republic Runner",
       "prompt": "Talk to the runner",
       "lines": [
-        "Linguica does not deliver itself. Off the Hook still owes us two favors.",
-        "Drive it downtown. Smile for the cameras you cannot see."
+        {
+          "speaker": "Republic Runner",
+          "text": "Linguica does not deliver itself. Off the Hook still owes us two favors."
+        },
+        {
+          "speaker": "Republic Runner",
+          "text": "You driving it downtown, or are you just here to drink?",
+          "choices": [
+            {
+              "text": "I'll run it.",
+              "nextLine": 2
+            },
+            {
+              "text": "Pour one. Then I drive.",
+              "nextLine": 3
+            }
+          ]
+        },
+        {
+          "speaker": "Republic Runner",
+          "text": "Smile for the cameras you cannot see.",
+          "endsConversation": true
+        },
+        {
+          "speaker": "Republic Runner",
+          "text": "One drink. Then the car. The Republic does not do tabs for new faces.",
+          "endsConversation": true
+        }
       ],
       "onComplete": {
         "completeObjective": false

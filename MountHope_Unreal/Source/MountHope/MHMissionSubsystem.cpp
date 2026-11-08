@@ -17,6 +17,45 @@ FString ResolvePath(const FString& RelativeOrAbsolutePath)
 
     return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / RelativeOrAbsolutePath);
 }
+
+EMHObjectiveType ParseObjectiveType(const FString& ObjectiveTypeString)
+{
+    if (ObjectiveTypeString.Equals(TEXT("timed"), ESearchCase::IgnoreCase))
+    {
+        return EMHObjectiveType::Timed;
+    }
+    if (ObjectiveTypeString.Equals(TEXT("survive"), ESearchCase::IgnoreCase))
+    {
+        return EMHObjectiveType::Survive;
+    }
+    if (ObjectiveTypeString.Equals(TEXT("talk"), ESearchCase::IgnoreCase))
+    {
+        return EMHObjectiveType::Talk;
+    }
+    if (ObjectiveTypeString.Equals(TEXT("pay"), ESearchCase::IgnoreCase))
+    {
+        return EMHObjectiveType::Pay;
+    }
+    if (ObjectiveTypeString.Equals(TEXT("collect"), ESearchCase::IgnoreCase))
+    {
+        return EMHObjectiveType::Collect;
+    }
+    if (!ObjectiveTypeString.IsEmpty() && !ObjectiveTypeString.Equals(TEXT("reach"), ESearchCase::IgnoreCase))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MountHope: Unknown objectiveType '%s' - treating as Reach"), *ObjectiveTypeString);
+    }
+    return EMHObjectiveType::Reach;
+}
+
+FName ReadNameField(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field)
+{
+    FString Value;
+    if (Object.IsValid() && Object->TryGetStringField(Field, Value) && !Value.IsEmpty())
+    {
+        return FName(*Value);
+    }
+    return NAME_None;
+}
 }
 
 bool UMHMissionSubsystem::LoadMissionsFromJson(const FString& RelativeOrAbsolutePath)
@@ -61,6 +100,7 @@ bool UMHMissionSubsystem::LoadMissionsFromJson(const FString& RelativeOrAbsolute
 
         FMHMission Mission;
         Mission.Title = Title;
+        Mission.Id = ReadNameField(MissionObject, TEXT("id"));
         MissionObject->TryGetStringField(TEXT("act"), Mission.Act);
         MissionObject->TryGetStringField(TEXT("completionMessage"), Mission.CompletionMessage);
 
@@ -95,18 +135,7 @@ bool UMHMissionSubsystem::LoadMissionsFromJson(const FString& RelativeOrAbsolute
                 FString ObjectiveTypeString;
                 if (StepObject->TryGetStringField(TEXT("objectiveType"), ObjectiveTypeString))
                 {
-                    if (ObjectiveTypeString.Equals(TEXT("timed"), ESearchCase::IgnoreCase))
-                    {
-                        Step.ObjectiveType = EMHObjectiveType::Timed;
-                    }
-                    else if (ObjectiveTypeString.Equals(TEXT("survive"), ESearchCase::IgnoreCase))
-                    {
-                        Step.ObjectiveType = EMHObjectiveType::Survive;
-                    }
-                    else
-                    {
-                        Step.ObjectiveType = EMHObjectiveType::Reach;
-                    }
+                    Step.ObjectiveType = ParseObjectiveType(ObjectiveTypeString);
                 }
 
                 double TimeLimitValue = Step.TimeLimitSeconds;
@@ -147,6 +176,22 @@ bool UMHMissionSubsystem::LoadMissionsFromJson(const FString& RelativeOrAbsolute
                 }
 
                 StepObject->TryGetStringField(TEXT("weatherOnStart"), Step.WeatherOnStart);
+                Step.ConversationId = ReadNameField(StepObject, TEXT("conversationId"));
+                Step.PayOfferId = ReadNameField(StepObject, TEXT("payOfferId"));
+                Step.CollectSetId = ReadNameField(StepObject, TEXT("collectSet"));
+                Step.CollectItemId = ReadNameField(StepObject, TEXT("collectItem"));
+
+                int32 PayAmountValue = Step.PayAmount;
+                if (StepObject->TryGetNumberField(TEXT("payAmount"), PayAmountValue))
+                {
+                    Step.PayAmount = PayAmountValue;
+                }
+
+                int32 CollectCountValue = Step.CollectCount;
+                if (StepObject->TryGetNumberField(TEXT("collectCount"), CollectCountValue))
+                {
+                    Step.CollectCount = CollectCountValue;
+                }
 
                 const TArray<TSharedPtr<FJsonValue>>* TargetArray = nullptr;
                 if (StepObject->TryGetArrayField(TEXT("target"), TargetArray) && TargetArray && TargetArray->Num() >= 3)
@@ -246,4 +291,82 @@ bool UMHMissionSubsystem::GetCurrentStep(FMHMissionStep& OutStep) const
     }
 
     return false;
+}
+
+bool UMHMissionSubsystem::FindMissionIndexById(FName MissionId, int32& OutIndex) const
+{
+    if (MissionId.IsNone())
+    {
+        return false;
+    }
+
+    for (int32 Index = 0; Index < Missions.Num(); ++Index)
+    {
+        if (Missions[Index].Id == MissionId)
+        {
+            OutIndex = Index;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool UMHMissionSubsystem::CanAcceptCompletion(EMHObjectiveCompletionChannel Channel, FName ContextId) const
+{
+    FMHMissionStep Step;
+    if (!GetCurrentStep(Step))
+    {
+        return false;
+    }
+
+    switch (Step.ObjectiveType)
+    {
+    case EMHObjectiveType::Reach:
+    case EMHObjectiveType::Timed:
+        return Channel == EMHObjectiveCompletionChannel::World || Channel == EMHObjectiveCompletionChannel::Dialogue;
+    case EMHObjectiveType::Survive:
+        return Channel == EMHObjectiveCompletionChannel::Timer;
+    case EMHObjectiveType::Talk:
+        return Channel == EMHObjectiveCompletionChannel::Dialogue
+            && !Step.ConversationId.IsNone()
+            && Step.ConversationId == ContextId;
+    case EMHObjectiveType::Pay:
+        return Channel == EMHObjectiveCompletionChannel::Payment
+            && !Step.PayOfferId.IsNone()
+            && Step.PayOfferId == ContextId
+            && Step.PayAmount > 0;
+    case EMHObjectiveType::Collect:
+        if (Channel != EMHObjectiveCompletionChannel::Collection)
+        {
+            return false;
+        }
+        if (!Step.CollectSetId.IsNone())
+        {
+            return ContextId == Step.CollectSetId && Step.CollectCount > 0;
+        }
+        return !Step.CollectItemId.IsNone() && ContextId == Step.CollectItemId;
+    default:
+        return false;
+    }
+}
+
+bool UMHMissionSubsystem::CanAcceptCollection(FName ItemId, FName SetId, int32 FoundInSet) const
+{
+    FMHMissionStep Step;
+    if (!GetCurrentStep(Step) || Step.ObjectiveType != EMHObjectiveType::Collect)
+    {
+        return false;
+    }
+
+    if (!Step.CollectSetId.IsNone())
+    {
+        return SetId == Step.CollectSetId
+            && Step.CollectCount > 0
+            && FoundInSet >= Step.CollectCount
+            && CanAcceptCompletion(EMHObjectiveCompletionChannel::Collection, SetId);
+    }
+
+    return ItemId == Step.CollectItemId
+        && CanAcceptCompletion(EMHObjectiveCompletionChannel::Collection, ItemId);
 }

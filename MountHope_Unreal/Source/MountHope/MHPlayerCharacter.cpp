@@ -89,6 +89,12 @@ void AMHPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
     }
 
     BindLegacyInput(PlayerInputComponent);
+
+    if (PlayerInputComponent)
+    {
+        PlayerInputComponent->BindAction(TEXT("DialogueChoice1"), IE_Pressed, this, &AMHPlayerCharacter::InputDialogueChoice1);
+        PlayerInputComponent->BindAction(TEXT("DialogueChoice2"), IE_Pressed, this, &AMHPlayerCharacter::InputDialogueChoice2);
+    }
 }
 
 void AMHPlayerCharacter::AddDefaultMappingContext()
@@ -156,6 +162,14 @@ void AMHPlayerCharacter::BindEnhancedInput(UInputComponent* PlayerInputComponent
     if (IA_Fire)
     {
         EnhancedInput->BindAction(IA_Fire, ETriggerEvent::Started, this, &AMHPlayerCharacter::InputFire);
+    }
+    if (IA_DialogueChoice1)
+    {
+        EnhancedInput->BindAction(IA_DialogueChoice1, ETriggerEvent::Started, this, &AMHPlayerCharacter::InputDialogueChoice1Action);
+    }
+    if (IA_DialogueChoice2)
+    {
+        EnhancedInput->BindAction(IA_DialogueChoice2, ETriggerEvent::Started, this, &AMHPlayerCharacter::InputDialogueChoice2Action);
     }
 }
 
@@ -276,6 +290,44 @@ void AMHPlayerCharacter::SetSprinting(bool bEnableSprint)
     }
 
     GetCharacterMovement()->MaxWalkSpeed = bEnableSprint ? SprintSpeed : WalkSpeed;
+}
+
+void AMHPlayerCharacter::RequestDialogueChoice(int32 ChoiceIndex)
+{
+    if (bInVehicle)
+    {
+        return;
+    }
+
+    if (UGameInstance* GameInstance = GetGameInstance())
+    {
+        if (UMHDialogueSubsystem* DialogueSubsystem = GameInstance->GetSubsystem<UMHDialogueSubsystem>())
+        {
+            DialogueSubsystem->SelectChoice(ChoiceIndex, false);
+        }
+    }
+}
+
+void AMHPlayerCharacter::InputDialogueChoice1()
+{
+    RequestDialogueChoice(0);
+}
+
+void AMHPlayerCharacter::InputDialogueChoice2()
+{
+    RequestDialogueChoice(1);
+}
+
+void AMHPlayerCharacter::InputDialogueChoice1Action(const FInputActionValue& Value)
+{
+    (void)Value;
+    RequestDialogueChoice(0);
+}
+
+void AMHPlayerCharacter::InputDialogueChoice2Action(const FInputActionValue& Value)
+{
+    (void)Value;
+    RequestDialogueChoice(1);
 }
 
 void AMHPlayerCharacter::TryInteract()

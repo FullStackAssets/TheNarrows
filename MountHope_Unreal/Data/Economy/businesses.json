@@ -49,5 +49,31 @@
       "dailyIncome": 700,
       "pos": [-10520.0, 0.0, 47420.0]
     }
+  ],
+  "offers": [
+    {
+      "id": "dock_bribe",
+      "name": "Dock Clerk Bribe",
+      "price": 200,
+      "category": "bribe"
+    },
+    {
+      "id": "medkit",
+      "name": "Dockside Medkit",
+      "price": 80,
+      "category": "health"
+    },
+    {
+      "id": "wharf_vest",
+      "name": "Wharf Vest",
+      "price": 150,
+      "category": "armor"
+    },
+    {
+      "id": "anvil_patch",
+      "name": "Anvil Patch Job",
+      "price": 120,
+      "category": "repair"
+    }
   ]
 }

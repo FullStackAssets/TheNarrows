@@ -2,6 +2,7 @@
 
 #include "Dom/JsonObject.h"
 #include "MHGameModeBase.h"
+#include "MHMissionSubsystem.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
@@ -77,7 +78,57 @@ bool UMHDialogueSubsystem::LoadDialogueFromJson(const FString& RelativeOrAbsolut
                 }
                 else if (const TSharedPtr<FJsonObject> LineObject = LineValue->AsObject())
                 {
-                    Line.Text = LineObject->GetStringField(TEXT("text"));
+                    if (!LineObject->TryGetStringField(TEXT("text"), Line.Text) || Line.Text.IsEmpty())
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping dialogue line with missing text in '%s'"), *ConversationIdString);
+                        continue;
+                    }
+
+                    LineObject->TryGetStringField(TEXT("speaker"), Line.Speaker);
+                    if (LineObject->HasField(TEXT("endsConversation")))
+                    {
+                        Line.bEndsConversation = LineObject->GetBoolField(TEXT("endsConversation"));
+                    }
+
+                    const TArray<TSharedPtr<FJsonValue>>* ChoicesArray = nullptr;
+                    if (LineObject->TryGetArrayField(TEXT("choices"), ChoicesArray) && ChoicesArray)
+                    {
+                        for (const TSharedPtr<FJsonValue>& ChoiceValue : *ChoicesArray)
+                        {
+                            const TSharedPtr<FJsonObject> ChoiceObject = ChoiceValue->AsObject();
+                            if (!ChoiceObject.IsValid())
+                            {
+                                continue;
+                            }
+
+                            FMHDialogueChoice Choice;
+                            if (!ChoiceObject->TryGetStringField(TEXT("text"), Choice.Text) || Choice.Text.IsEmpty())
+                            {
+                                UE_LOG(LogTemp, Warning, TEXT("MountHope: Skipping dialogue choice with missing text in '%s'"), *ConversationIdString);
+                                continue;
+                            }
+
+                            bool bEnd = false;
+                            if (ChoiceObject->TryGetBoolField(TEXT("end"), bEnd) && bEnd)
+                            {
+                                Choice.NextLineIndex = INDEX_NONE;
+                            }
+                            else
+                            {
+                                double NextLineValue = 0.0;
+                                if (ChoiceObject->TryGetNumberField(TEXT("nextLine"), NextLineValue) && NextLineValue >= 0.0)
+                                {
+                                    Choice.NextLineIndex = static_cast<int32>(NextLineValue);
+                                }
+                                else
+                                {
+                                    Choice.NextLineIndex = INDEX_NONE;
+                                }
+                            }
+
+                            Line.Choices.Add(MoveTemp(Choice));
+                        }
+                    }
                 }
 
                 if (!Line.Text.IsEmpty())
@@ -134,6 +185,18 @@ bool UMHDialogueSubsystem::AdvanceConversation(bool bPlayerInVehicle)
         return false;
     }
 
+    if (CurrentLineHasChoices())
+    {
+        UE_LOG(LogTemp, Log, TEXT("MountHope: dialogue line has choices - pick one instead of advancing."));
+        return false;
+    }
+
+    if (Conversation.Lines.IsValidIndex(ActiveLineIndex) && Conversation.Lines[ActiveLineIndex].bEndsConversation)
+    {
+        FinishConversation(bPlayerInVehicle);
+        return false;
+    }
+
     ++ActiveLineIndex;
     if (Conversation.Lines.IsValidIndex(ActiveLineIndex))
     {
@@ -141,12 +204,80 @@ bool UMHDialogueSubsystem::AdvanceConversation(bool bPlayerInVehicle)
         return true;
     }
 
-    const FMHDialogueCompletion Completion = Conversation.OnComplete;
+    FinishConversation(bPlayerInVehicle);
+    return false;
+}
+
+bool UMHDialogueSubsystem::SelectChoice(int32 ChoiceIndex, bool bPlayerInVehicle)
+{
+    FMHDialogueConversation Conversation;
+    if (!GetActiveConversation(Conversation) || !Conversation.Lines.IsValidIndex(ActiveLineIndex))
+    {
+        return false;
+    }
+
+    const FMHDialogueLine& Line = Conversation.Lines[ActiveLineIndex];
+    if (!Line.Choices.IsValidIndex(ChoiceIndex))
+    {
+        return false;
+    }
+
+    const int32 NextLineIndex = Line.Choices[ChoiceIndex].NextLineIndex;
+    if (!Conversation.Lines.IsValidIndex(NextLineIndex))
+    {
+        FinishConversation(bPlayerInVehicle);
+        return true;
+    }
+
+    ActiveLineIndex = NextLineIndex;
+    BroadcastCurrentLine();
+    return true;
+}
+
+int32 UMHDialogueSubsystem::GetCurrentChoiceCount() const
+{
+    FMHDialogueConversation Conversation;
+    if (!GetActiveConversation(Conversation) || !Conversation.Lines.IsValidIndex(ActiveLineIndex))
+    {
+        return 0;
+    }
+
+    return Conversation.Lines[ActiveLineIndex].Choices.Num();
+}
+
+bool UMHDialogueSubsystem::GetCurrentChoiceText(int32 ChoiceIndex, FString& OutText) const
+{
+    FMHDialogueConversation Conversation;
+    if (!GetActiveConversation(Conversation) || !Conversation.Lines.IsValidIndex(ActiveLineIndex))
+    {
+        return false;
+    }
+
+    const TArray<FMHDialogueChoice>& Choices = Conversation.Lines[ActiveLineIndex].Choices;
+    if (!Choices.IsValidIndex(ChoiceIndex))
+    {
+        return false;
+    }
+
+    OutText = Choices[ChoiceIndex].Text;
+    return !OutText.IsEmpty();
+}
+
+bool UMHDialogueSubsystem::CurrentLineHasChoices() const
+{
+    return GetCurrentChoiceCount() > 0;
+}
+
+bool UMHDialogueSubsystem::FinishConversation(bool bPlayerInVehicle)
+{
+    FMHDialogueConversation Conversation;
+    const bool bFound = GetActiveConversation(Conversation);
+    const FMHDialogueCompletion Completion = bFound ? Conversation.OnComplete : FMHDialogueCompletion();
     const FName EndedId = ActiveConversationId;
     EndConversation();
-    ApplyCompletion(Completion, bPlayerInVehicle);
+    const bool bCompletedObjective = bFound && ApplyCompletion(Completion, bPlayerInVehicle, EndedId);
     OnDialogueEnded.Broadcast(EndedId);
-    return false;
+    return bCompletedObjective;
 }
 
 void UMHDialogueSubsystem::EndConversation()
@@ -173,8 +304,10 @@ bool UMHDialogueSubsystem::GetCurrentLine(FText& OutLineText, FName& OutSpeaker)
         return false;
     }
 
-    OutLineText = FText::FromString(Conversation.Lines[ActiveLineIndex].Text);
-    OutSpeaker = FName(*Conversation.Speaker);
+    const FMHDialogueLine& Line = Conversation.Lines[ActiveLineIndex];
+    OutLineText = FText::FromString(Line.Text);
+    const FString SpeakerString = Line.Speaker.IsEmpty() ? Conversation.Speaker : Line.Speaker;
+    OutSpeaker = FName(*SpeakerString);
     return true;
 }
 
@@ -192,7 +325,7 @@ bool UMHDialogueSubsystem::FindConversation(FName ConversationId, FMHDialogueCon
     return false;
 }
 
-bool UMHDialogueSubsystem::ApplyCompletion(const FMHDialogueCompletion& Completion, bool bPlayerInVehicle)
+bool UMHDialogueSubsystem::ApplyCompletion(const FMHDialogueCompletion& Completion, bool bPlayerInVehicle, FName ConversationId)
 {
     if (!Completion.bCompleteObjective)
     {
@@ -213,7 +346,10 @@ bool UMHDialogueSubsystem::ApplyCompletion(const FMHDialogueCompletion& Completi
 
     if (AMHGameModeBase* GameMode = Cast<AMHGameModeBase>(World->GetAuthGameMode()))
     {
-        return GameMode->CompleteCurrentObjective(bPlayerInVehicle);
+        return GameMode->CompleteCurrentObjectiveFrom(
+            EMHObjectiveCompletionChannel::Dialogue,
+            ConversationId,
+            bPlayerInVehicle);
     }
 
     return false;

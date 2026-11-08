@@ -4,6 +4,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MHCollectibleSubsystem.h"
+#include "MHGameModeBase.h"
 #include "MHGameStateSubsystem.h"
 
 AMHCollectibleActor::AMHCollectibleActor()
@@ -78,12 +79,45 @@ void AMHCollectibleActor::Interact_Implementation(APawn* InstigatorPawn)
         return;
     }
 
-    if (Record.CashReward != 0)
+    if (UMHGameStateSubsystem* GameState = GameInstance->GetSubsystem<UMHGameStateSubsystem>())
     {
-        if (UMHGameStateSubsystem* GameState = GameInstance->GetSubsystem<UMHGameStateSubsystem>())
+        if (Record.CashReward != 0)
         {
             GameState->AddCash(Record.CashReward);
         }
+
+        TArray<FName> CompletedSets;
+        const int32 SetBonus = Collectibles->ConsumePendingSetBonus(CompletedSets);
+        if (SetBonus > 0)
+        {
+            GameState->AddCash(SetBonus);
+            UE_LOG(LogTemp, Log, TEXT("MountHope: Collectible set bonus $%d (%d set(s))"), SetBonus, CompletedSets.Num());
+        }
+    }
+    else
+    {
+        TArray<FName> DiscardedSets;
+        Collectibles->ConsumePendingSetBonus(DiscardedSets);
+    }
+
+    if (AMHGameModeBase* GameMode = Cast<AMHGameModeBase>(UGameplayStatics::GetGameMode(this)))
+    {
+        for (const FMHCollectibleSet& Set : Collectibles->CollectibleSets)
+        {
+            if (!Set.MemberIds.Contains(ItemId))
+            {
+                continue;
+            }
+
+            int32 Found = 0;
+            int32 Total = 0;
+            if (Collectibles->GetSetProgress(Set.Id, Found, Total))
+            {
+                GameMode->NotifyCollectibleProgress(ItemId, Set.Id, Found);
+            }
+        }
+
+        GameMode->NotifyCollectibleProgress(ItemId, NAME_None, 1);
     }
 
     UGameplayStatics::PlaySound2D(this, PickupSound);

@@ -3,7 +3,10 @@
 #include "Components/SphereComponent.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
+#include "MHEconomySubsystem.h"
+#include "MHGameModeBase.h"
 #include "MHGameStateSubsystem.h"
+#include "MHMissionSubsystem.h"
 #include "MHReputationSubsystem.h"
 #include "MHVehiclePawn.h"
 
@@ -30,6 +33,42 @@ FText AMHShopActor::GetInteractionPrompt_Implementation() const
     if (ShopType == EMHShopType::Garage)
     {
         return FText::FromString(FString::Printf(TEXT("Repair vehicle at %s ($%d)"), *ShopName, GetEffectiveRepairCost()));
+    }
+
+    if (UGameInstance* GameInstance = GetGameInstance())
+    {
+        if (UMHMissionSubsystem* Missions = GameInstance->GetSubsystem<UMHMissionSubsystem>())
+        {
+            FMHMissionStep Step;
+            if (Missions->GetCurrentStep(Step)
+                && Step.ObjectiveType == EMHObjectiveType::Pay
+                && !Step.PayOfferId.IsNone())
+            {
+                int32 Price = Step.PayAmount;
+                if (UMHEconomySubsystem* Economy = GameInstance->GetSubsystem<UMHEconomySubsystem>())
+                {
+                    const int32 Quoted = Economy->QuoteOfferPrice(Step.PayOfferId, GetReputationDiscountPercent());
+                    if (Quoted >= 0)
+                    {
+                        Price = Quoted;
+                    }
+                }
+                return FText::FromString(FString::Printf(TEXT("Pay $%d at %s"), Price, *ShopName));
+            }
+        }
+
+        if (!LinkedOfferId.IsNone())
+        {
+            if (UMHEconomySubsystem* Economy = GameInstance->GetSubsystem<UMHEconomySubsystem>())
+            {
+                FMHEconomyOffer Offer;
+                if (Economy->FindOffer(LinkedOfferId, Offer))
+                {
+                    const int32 Quoted = Economy->QuoteOfferPrice(LinkedOfferId, GetReputationDiscountPercent());
+                    return FText::FromString(FString::Printf(TEXT("Buy %s ($%d)"), *Offer.DisplayName, FMath::Max(0, Quoted)));
+                }
+            }
+        }
     }
 
     return FText::FromString(FString::Printf(TEXT("Shop at %s"), *ShopName));
@@ -93,7 +132,52 @@ void AMHShopActor::HandleGarageInteraction(APawn* InstigatorPawn)
 void AMHShopActor::HandleGeneralStoreInteraction(APawn* InstigatorPawn)
 {
     UGameInstance* GameInstance = GetGameInstance();
-    if (!GameInstance || LinkedBusinessId.IsEmpty())
+    if (!GameInstance)
+    {
+        return;
+    }
+
+    if (UMHMissionSubsystem* Missions = GameInstance->GetSubsystem<UMHMissionSubsystem>())
+    {
+        FMHMissionStep Step;
+        if (Missions->GetCurrentStep(Step) && Step.ObjectiveType == EMHObjectiveType::Pay)
+        {
+            if (AMHGameModeBase* GameMode = Cast<AMHGameModeBase>(UGameplayStatics::GetGameMode(this)))
+            {
+                const bool bInVehicle = InstigatorPawn && InstigatorPawn->IsA<AMHVehiclePawn>();
+                if (GameMode->TryPayCurrentObjective(GetReputationDiscountPercent(), bInVehicle))
+                {
+                    UE_LOG(LogTemp, Log, TEXT("MountHope: Paid objective offer '%s' at %s"), *Step.PayOfferId.ToString(), *ShopName);
+                    UGameplayStatics::PlaySound2D(this, TransactionSuccessSound);
+                }
+                else
+                {
+                    UGameplayStatics::PlaySound2D(this, TransactionDeniedSound);
+                }
+                return;
+            }
+        }
+    }
+
+    if (!LinkedOfferId.IsNone())
+    {
+        if (UMHEconomySubsystem* Economy = GameInstance->GetSubsystem<UMHEconomySubsystem>())
+        {
+            if (Economy->TryPurchaseOffer(LinkedOfferId, GetReputationDiscountPercent()))
+            {
+                UE_LOG(LogTemp, Log, TEXT("MountHope: Purchased offer '%s' at %s"), *LinkedOfferId.ToString(), *ShopName);
+                UGameplayStatics::PlaySound2D(this, TransactionSuccessSound);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Log, TEXT("MountHope: Could not purchase offer '%s' at %s"), *LinkedOfferId.ToString(), *ShopName);
+                UGameplayStatics::PlaySound2D(this, TransactionDeniedSound);
+            }
+        }
+        return;
+    }
+
+    if (LinkedBusinessId.IsEmpty())
     {
         return;
     }
@@ -111,6 +195,28 @@ void AMHShopActor::HandleGeneralStoreInteraction(APawn* InstigatorPawn)
             UGameplayStatics::PlaySound2D(this, TransactionDeniedSound);
         }
     }
+}
+
+int32 AMHShopActor::GetReputationDiscountPercent() const
+{
+    if (!ReputationFactionTag.IsValid() || ReputationDiscountPct <= 0.0f)
+    {
+        return 0;
+    }
+
+    UGameInstance* GameInstance = GetGameInstance();
+    if (!GameInstance)
+    {
+        return 0;
+    }
+
+    UMHReputationSubsystem* Reputation = GameInstance->GetSubsystem<UMHReputationSubsystem>();
+    if (Reputation && Reputation->MeetsReputation(ReputationFactionTag, ReputationDiscountThreshold))
+    {
+        return FMath::Clamp(FMath::RoundToInt(ReputationDiscountPct * 100.0f), 0, 75);
+    }
+
+    return 0;
 }
 
 int32 AMHShopActor::GetEffectiveRepairCost() const

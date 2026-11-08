@@ -40,7 +40,8 @@ MAP_PATH = "/Game/Maps/MH_VerticalSlice"
 
 METERS_TO_CM = 100.0
 MAX_ROAD_SPLINES = 120
-SLICE_ROAD_BBOX_METERS = 2500.0  # only roads with a point inside this radius from origin
+SLICE_ROAD_BBOX_METERS = 2500.0  # fallback when Data/OSM/import_manifest.json is absent
+MANIFEST_PATH = os.path.join(PROJECT_ROOT, "Data", "OSM", "import_manifest.json")
 
 
 def log(message: str) -> None:
@@ -130,11 +131,44 @@ def slice_point_to_unreal(x_meters: float, y_north_meters: float, z_up_meters: f
     )
 
 
+_PLAYABLE_RADIUS_M: float | None = None
+
+
+def playable_radius_meters() -> float:
+    """Prefer the prepared manifest radius. Fall back to the script constant.
+
+    The manifest is a read-only contract (see Scripts/prepare_osm_import.py).
+    Missing or unreadable data does not change the OBJ import. The radius is a
+    Euclidean distance from the slice origin, matching the manifest's
+    ``sliceRoadsNearOrigin400m`` count.
+    """
+    global _PLAYABLE_RADIUS_M
+    if _PLAYABLE_RADIUS_M is not None:
+        return _PLAYABLE_RADIUS_M
+
+    radius = SLICE_ROAD_BBOX_METERS
+    if os.path.isfile(MANIFEST_PATH):
+        try:
+            with open(MANIFEST_PATH, encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            loaded = float(manifest["playableDistrict"]["radiusMeters"])
+            if loaded > 0.0:
+                radius = loaded
+        except (OSError, ValueError, KeyError, TypeError):
+            warn("OSM import manifest unreadable; using the script bbox default.")
+    _PLAYABLE_RADIUS_M = radius
+    return radius
+
+
 def road_in_slice_bbox(road: dict) -> bool:
+    radius = playable_radius_meters()
+    radius_sq = radius * radius
     for point in road.get("points", []):
         if len(point) < 2:
             continue
-        if abs(point[0]) <= SLICE_ROAD_BBOX_METERS and abs(point[1]) <= SLICE_ROAD_BBOX_METERS:
+        east = point[0]
+        north = point[1]
+        if (east * east) + (north * north) <= radius_sq:
             return True
     return False
 

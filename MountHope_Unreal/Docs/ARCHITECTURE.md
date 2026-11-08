@@ -49,11 +49,12 @@ growing a parallel one.
 
 | Subsystem | Owns |
 | --- | --- |
-| `UMHMissionSubsystem` | Campaign data, current mission/step, advance / **restart / fail** / completion, `OnMissionCompleted` + `OnMissionFailed`. |
-| `UMHGameStateSubsystem` | Cash, health, dual heat, weather, owned businesses + passive income, safehouse, save/load (the **canonical** save path). Wasted/busted consequences. |
+| `UMHMissionSubsystem` | Campaign data (stable `id`s), current mission/step, advance / **restart / fail** / completion, and which completion channel a step accepts (`Reach`/`Timed`/`Survive`/`Talk`/`Pay`/`Collect`). |
+| `UMHGameStateSubsystem` | Cash, health, dual heat, weather, owned businesses + passive income, safehouse, save/load (the save path other systems write through). Wasted/busted consequences. |
+| `UMHEconomySubsystem` | Offer catalog, discounted quotes, purchases, and a short ledger. Cash balance still lives on the game-state subsystem. |
 | `UMHReputationSubsystem` | Per-faction standing (clamped ±100) + save snapshot. |
-| `UMHDialogueSubsystem` | Conversations, active-line state, `OnDialogueLineChanged`, objective completion on the final line. |
-| `UMHCollectibleSubsystem` | Collectible roster + collected set + `OnCollectibleFound`. |
+| `UMHDialogueSubsystem` | Conversations, per-line speakers, choice branches, active-line state, `OnDialogueLineChanged`, objective completion when a completing conversation ends. |
+| `UMHCollectibleSubsystem` | Collectible roster, set progress, one-shot set bonuses, collected ids, `OnCollectibleFound`. |
 | `UMHRadioSubsystem` | Station roster + tuning + `OnStationChanged` / `OnSongChanged`. |
 | `UMHTimeOfDaySubsystem` | Game clock, `OnHourChanged`, sun-intensity curve. |
 | `UMHWorldSliceSubsystem` | Loads the real New Bedford OSM slice JSON at runtime. |
@@ -97,7 +98,9 @@ module. Three gates stand in, in increasing fidelity:
    dynamic-delegate `UFUNCTION`s). Not a compiler — see its header.
 3. **UE automation tests** (`Source/MountHope/Tests/*.cpp`, guarded by
    `WITH_DEV_AUTOMATION_TESTS`) — real unit tests of the deterministic subsystem
-   logic (wanted decay, mission advance/restart, economy, reputation, clock).
+   logic (wanted decay, mission channels, dialogue choices, offer quotes,
+   collectible sets, reputation, clock). The automation tests are compiled by
+   Unreal; this sandbox does not run them.
    These require the engine, so they run **locally / on a self-hosted UE runner**,
    not in the Python CI. Run them from the editor's **Session Frontend →
    Automation** (filter `MountHope`) or headlessly:
