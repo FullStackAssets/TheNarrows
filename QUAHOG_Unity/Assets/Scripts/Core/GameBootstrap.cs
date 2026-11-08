@@ -52,12 +52,13 @@ namespace Quahog.SouthCoast
             // Living-world HUD: day/time clock, weather, and wanted-level stars.
             root.AddComponent<WorldHud>();
 
-            // ----- Playable slice: real GIS city block (map-accurate) + on-foot player
-            // + drivable car. We try to build the city from real GeoJSON data
-            // (Resources/gis/newbedford.json); if that asset is missing or invalid we
-            // fall back to the procedural greybox so a build is never empty.
+            // ----- Playable slice. Prefer the OSM clip (Resources/gis/waterfront),
+            // which is cut from the shared web slice + building tiles. The hand-authored
+            // newbedford grid is only a fallback. Greybox is last so a build is never empty.
             Vector3 playerSpawn, vehicleSpawn;
-            var gis = Quahog.SouthCoast.Gis.GisCity.TryBuildFromResources("gis/newbedford");
+            var gis = Quahog.SouthCoast.Gis.GisCity.TryBuildFromResources("gis/waterfront");
+            if (gis == null)
+                gis = Quahog.SouthCoast.Gis.GisCity.TryBuildFromResources("gis/newbedford");
             if (gis != null)
             {
                 playerSpawn = gis.PlayerSpawn;
@@ -75,9 +76,12 @@ namespace Quahog.SouthCoast
             var car = CarController.Spawn(vehicleSpawn);
             root.AddComponent<PlayerVehicleInteractor>().Init(player, followCam, car);
 
-            // Street life: wandering pedestrians + a few decorative AI cars (kinematic,
-            // so they never disturb the player's physics car).
-            StreetLife.Spawn();
+            // Street life stays kinematic. On the OSM clip it follows real centre-lines;
+            // the greybox keeps the old wander box.
+            if (gis != null && gis.TrafficRoutes != null && gis.TrafficRoutes.Count > 0)
+                StreetLife.Spawn(gis.TrafficRoutes);
+            else
+                StreetLife.Spawn();
 
             Debug.Log("[GameBootstrap] QUAHOG online — managers spawned, HUD up, $500 in the wallet.");
         }

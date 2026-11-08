@@ -1,16 +1,17 @@
-# WebGL CI/CD — auto-build & auto-publish
+# WebGL CI — manual Unity player build
 
-Goal: every push to `claude/extract-into-repo-b738b0` builds the Unity WebGL
-player on GitHub's servers and publishes it to the live URL automatically — no
-UBA, no zips, no manual steps.
+The Unity WebGL workflow is **manual**. A push does not build or deploy.
+Dispatch **Build & Deploy WebGL** from the Actions tab after the secrets below
+exist. The canonical notes for this track are
+[`QUAHOG_Unity/WEBGL.md`](QUAHOG_Unity/WEBGL.md).
 
-Live URL: **https://fullstackassets.com/quahog/**
+The workflow file is `.github/workflows/deploy-webgl.yml`.
+`.github/workflows/unity-activation.yml` only prints the license steps; it does
+not create an activation file.
 
-The main workflow is:
-- `.github/workflows/deploy-webgl.yml` — the build + deploy pipeline.
-
-Some branches may also include `.github/workflows/unity-activation.yml`, a
-one-time helper that only prints the same license steps below.
+A successful dispatch publishes the player to the `gh-pages` branch. No player
+was built in the sandbox that documented this path: the Unity editor is not
+installed there, and the workflow was not dispatched.
 
 You only have to do the setup below **once**.
 
@@ -71,11 +72,10 @@ serves whatever the latest build produced.)
 
 ## That's it
 
-Once the required secrets are set:
-- **Push to the branch → it builds → it deploys.** Check progress under the
-  **Actions** tab. First build is ~20–30 min (no cache); later builds are faster.
-- You can also trigger a build by hand: **Actions → Build & Deploy WebGL →
-  Run workflow**.
+Once the required secrets are set, dispatch the workflow by hand:
+**Actions → Build & Deploy WebGL → Run workflow**. A push does not start it.
+First build is long (no Library cache); later builds reuse the cache when the
+runner still has it.
 
 ### Notes
 - The build runs the project's pre-build hook, which sets WebGL **Decompression
@@ -119,8 +119,6 @@ serial it was given is invalid (`20110`).
   format `XX-XXXX-XXXX-XXXX-XXXX-XXXX` (and remove `UNITY_LICENSE` so the serial
   path is used). A typo, trailing newline, or placeholder value triggers `20110`.
 
-After fixing the secret, re-run **Actions → Build & Deploy WebGL → Run workflow**
-(the trigger is `workflow_dispatch` — manual — so a bad config doesn't spam
-20-minute failing builds on every push). Once it goes green you can re-enable the
-auto-build-on-push trigger that is commented out at the top of
-`deploy-webgl.yml`.
+After fixing the secret, re-run **Actions → Build & Deploy WebGL → Run workflow**.
+The trigger is `workflow_dispatch` only, so a bad secret does not start a build
+on every push. Leave it that way; do not add a push trigger back.

@@ -13,11 +13,11 @@ namespace Quahog.SouthCoast.EditorTools
     /// Editor-only project config (wrapped in UNITY_EDITOR, under Assets/Editor/,
     /// so it never enters a player build).
     ///
-    /// The project ships on the BUILT-IN render pipeline for now — URP is in the
-    /// manifest but intentionally not assigned. The proof-of-life HUD is uGUI
-    /// screen-overlay (renders regardless of pipeline) and there is no 3D content
-    /// yet, so there's nothing to render "pink". This keeps the first Build
-    /// Automation run low-risk.
+        /// The project ships on the BUILT-IN render pipeline until someone runs
+        /// QUAHOG/Enable URP in the editor. URP is in the manifest but not assigned.
+        /// The playable slice (GIS city, player, car, street life) asks for
+        /// URP/Lit and falls back to Standard, then Sprites/Default, so a built-in
+        /// player still has materials. The HUD is uGUI and does not depend on that.
     ///
     /// A pre-build step stamps product identity (name / company / Android bundle
     /// id) so the player has a proper identity. URP is a deliberate opt-in via the
@@ -107,6 +107,7 @@ namespace Quahog.SouthCoast.EditorTools
         /// header. Decompression Fallback makes the loader decompress in JS, so the
         /// gzip-compressed build no longer depends on server headers.
         /// </summary>
+        [MenuItem("QUAHOG/Configure WebGL Static Hosting")]
         public static void ConfigureWebGLForStaticHosting()
         {
             try
